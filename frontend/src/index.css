@@ -1,3 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  .bg-softbg {
+    background-color: #F7F8FC;
+  }
+  .festival-diwali {
+    background: radial-gradient(circle at 20% 20%, #fffbe6 0%, #ffe4e6 100%);
+  }
+}
+
+body {
+  @apply bg-softbg font-poppins text-gray-800;
+}
