@@ -14,7 +14,7 @@ export default {
           softbg: '#F7F8FC',   // Soft White
         },
         fontFamily: {
-          poppins: ['Poppins', 'sans-serif'],
+          poppins: ['Poppins', 'sans-serif'], 
         },
         boxShadow: {
           soft: '0 2px 8px rgba(0, 0, 0, 0.05)',
