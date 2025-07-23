@@ -299,3 +299,79 @@ exports.generateChalkboardAid = onCall({
     );
   }
 });
+
+exports.processSyllabus = onObjectFinalized(
+    {
+      region: DEPLOY_REGION,
+      timeoutSeconds: 540, // Give it more time for long documents
+      memory: "2GiB", // Give it more memory
+      secrets: ["GEMINI_API_KEY"],
+    },
+    async (event) => {
+      if (!genAI) {
+        genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      }
+      // We need a model with a large context window for this task
+      const model = genAI.getGenerativeModel({model: "gemini-1.5-pro-latest"});
+
+      const {bucket: fileBucket, name: filePath, contentType} = event.data;
+
+      // We'll create a special folder in Storage for syllabus uploads
+      if (!filePath.startsWith("syllabus_uploads/") || contentType !== "application/pdf") {
+        console.log("This is not a new syllabus PDF. Exiting.");
+        return null;
+      }
+
+      const {teacherId} = event.data.metadata || {};
+      if (!teacherId) {
+        console.error("Missing teacherId metadata on the uploaded file. Exiting.");
+        return null;
+      }
+
+      try {
+        console.log(`Processing new syllabus PDF: ${filePath}`);
+        const bucket = getStorage().bucket(fileBucket);
+        const file = bucket.file(filePath);
+        const [pdfBuffer] = await file.download();
+
+        const pdfPart = {
+          inlineData: {
+            data: pdfBuffer.toString("base64"),
+            mimeType: "application/pdf",
+          },
+        };
+
+        const prompt = `You are an expert curriculum architect for Indian schools.
+      Analyze this entire curriculum PDF. Your primary task is to break it down into a structured 36-week school year plan.
+      For each week, identify the main topics to be taught.
+      Respond ONLY with a valid JSON array. Do not include markdown.
+      Each object in the array must represent a single topic and have these three keys: "topic" (string), "grade" (number, if specified), and "weekNumber" (number).`;
+
+        console.log("Calling Gemini 1.5 Pro to architect the yearly plan...");
+        const result = await model.generateContent([prompt, pdfPart]);
+        const response = await result.response;
+        const syllabusArray = JSON.parse(response.text());
+
+        console.log(`AI generated a ${syllabusArray.length}-item syllabus. Saving to Firestore...`);
+        const db = getFirestore();
+        const batch = db.batch();
+
+        // Save each generated topic to the syllabusPlan collection
+        syllabusArray.forEach((item) => {
+          const docRef = db.collection("syllabusPlan").doc(); // Create a new doc
+          batch.set(docRef, {
+            ...item,
+            teacherId: teacherId,
+            isPlanned: false, // This flag is still needed for our n8n workflow
+          });
+        });
+
+        await batch.commit();
+        console.log("Successfully saved the entire yearly syllabus plan to Firestore.");
+        return null;
+      } catch (error) {
+        console.error("CRITICAL ERROR in processSyllabus function:", error);
+        return null;
+      }
+    },
+);

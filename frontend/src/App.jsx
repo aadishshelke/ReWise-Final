@@ -16,12 +16,12 @@ import WorksheetGeneratorPage from "./pages/WorksheetGeneratorPage";
 import StoryGeneratorPage from "./pages/StoryGeneratorPage";
 import ConceptExplainerPage from "./pages/ConceptExplainerPage";
 import ChalkboardViewPage from "./pages/ChalkboardViewPage";
+import SyllabusUploader from "./pages/SyllabusUploader";
 
 // Import our new auth components
 import AuthProvider from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-// I'm keeping your teammate's ThemeProvider logic for now
 // We'll just wrap it with our AuthProvider
 const ThemeContext = createContext();
 
@@ -111,6 +111,8 @@ function App() {
             <Route path="dashboard/story" element={<StoryGeneratorPage />} />
             <Route path="dashboard/concept" element={<ConceptExplainerPage />} />
             <Route path="dashboard/chalkboard" element={<ChalkboardViewPage />} />
+            <Route path="dashboard/syllabus-upload" element={<SyllabusUploader />} />
+            
           </Route>
           {/* ------------------------------------------- */}
 
