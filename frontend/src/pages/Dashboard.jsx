@@ -7,11 +7,14 @@ import { AnalyticsSection } from "../components/AnalyticsSection";
 import { StudentSpotlightCard } from "../components/StudentSpotlightCard";
 import { XPBadgeSection } from "../components/XPBadgeSection";
 import { BalBuddyWidget } from "../components/BalBuddyWidget";
+import MorningBriefingCard from '../components/MorningBriefingCard';
 
 export default function Dashboard() {
   return (
     <>
       <HeaderSection />
+      <MorningBriefingCard />
+
       <WeeklyGoalTracker />
       <SmartSuggestionsCarousel />
       <QuickActionsRow />

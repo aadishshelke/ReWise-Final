@@ -8,17 +8,116 @@ const {getFirestore} = require("firebase-admin/firestore");
 const {getStorage} = require("firebase-admin/storage");
 const {GoogleGenerativeAI} = require("@google/generative-ai");
 const {VertexAI} = require("@google-cloud/vertexai");
+const admin = require("firebase-admin");
 
 initializeApp();
 
 const DEPLOY_REGION = "us-east1";
 const MODEL_NAME = "gemini-1.5-flash-latest";
 const IMAGE_MODEL_NAME = "imagegeneration@0.0.5"; // Stable Imagen model
+const PRO_MODEL_NAME = "gemini-1.5-pro-latest"; // For complex reasoning
+
+
 
 
 // We will initialize the client inside the function handlers.
 let genAI;
 let vertexAI;
+
+
+exports.generateDailyBriefings = onSchedule({
+  schedule: "every day 07:00",
+  timeZone: "Asia/Kolkata", // Set to Indian Standard Time
+  region: DEPLOY_REGION,
+  timeoutSeconds: 540,
+  memory: "1GiB",
+}, async (event) => {
+  console.log("AGENT BRAIN: Waking up to prepare morning briefings.");
+  if (!vertexAI) {
+      vertexAI = new VertexAI({project: process.env.GCLOUD_PROJECT, location: DEPLOY_REGION});
+  }
+  const model = vertexAI.getGenerativeModel({model: PRO_MODEL_NAME});
+  const db = getFirestore();
+
+  const usersSnapshot = await db.collection("users").get();
+  if (usersSnapshot.empty) {
+      console.log("AGENT BRAIN: No teachers found. Going back to sleep.");
+      return;
+  }
+
+  const dayOfYear = (new Date().setUTCHours(0, 0, 0, 0) - new Date(new Date().getUTCFullYear(), 0, 0)) / 86400000;
+  const currentWeek = Math.ceil(dayOfYear / 7);
+
+  for (const userDoc of usersSnapshot.docs) {
+      const teacherId = userDoc.id;
+      console.log(`AGENT BRAIN: Preparing briefing for teacher: ${teacherId}, Week: ${currentWeek}`);
+
+      try {
+          const syllabusQuery = db.collection("syllabusPlan")
+              .where("teacherId", "==", teacherId)
+              .where("weekNumber", "==", currentWeek);
+          
+          const syllabusSnapshot = await syllabusQuery.get();
+          if (syllabusSnapshot.empty) {
+              console.log(`No syllabus found for teacher ${teacherId} for week ${currentWeek}. Skipping.`);
+              continue;
+          }
+
+          const topics = syllabusSnapshot.docs.map(doc => {
+              const data = doc.data();
+              return `Topic: "${data.topic}" for Grade ${data.grade}`;
+          }).join(", ");
+
+          const prompt = `
+          You are "Sahayak," an AI teaching companion for a teacher in a multi-grade Indian classroom.
+          Your task is to create a proactive, encouraging "Morning Briefing" based on the topics for the current week.
+
+          **Context:**
+          - Teacher ID: ${teacherId}
+          - Current School Week: ${currentWeek}
+          - Topics for this week: ${topics}
+
+          **Instructions:**
+          1.  **Title:** Create a short, inspiring title for the briefing (e.g., "A Week of Discovery!", "Exploring Our World").
+          2.  **Message:** Write a 1-2 sentence encouraging message that introduces the week's theme based on the topics.
+          3.  **Story Idea:** Suggest a simple, one-sentence idea for a story in a local Indian context related to one of the topics.
+          4.  **Blackboard Idea:** Suggest a simple, one-sentence description of a line drawing or chart for the blackboard to explain a concept.
+          5.  **Response Format:** Respond ONLY with a valid JSON object. Do not use markdown.
+
+          **JSON OUTPUT STRUCTURE:**
+          {
+            "title": "Your Generated Title",
+            "message": "Your generated 1-2 sentence message.",
+            "suggestions": {
+              "storyIdea": "Your generated story idea.",
+              "blackboardIdea": "Your generated blackboard idea."
+            }
+          }
+          `;
+
+          const result = await model.generateContent(prompt);
+          const responseText = result.response.candidates[0].content.parts[0].text;
+          const cleanJsonString = responseText.replace(/^```json\s*|```\s*$/g, "");
+          const briefingData = JSON.parse(cleanJsonString);
+
+          await db.collection("users").doc(teacherId).collection("briefings").add({
+              ...briefingData,
+              weekNumber: currentWeek,
+              isNew: true,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          console.log(`AGENT BRAIN: Successfully created briefing for teacher ${teacherId}`);
+
+      } catch (error) {
+          console.error(`AGENT BRAIN: CRITICAL ERROR for teacher ${teacherId}:`, error);
+      }
+  }
+  console.log("AGENT BRAIN: All briefings prepared.");
+  return null;
+});
+
+
 
 exports.generateTextContent = onCall({
   region: DEPLOY_REGION,
@@ -300,78 +399,74 @@ exports.generateChalkboardAid = onCall({
   }
 });
 
-exports.processSyllabus = onObjectFinalized(
-    {
-      region: DEPLOY_REGION,
-      timeoutSeconds: 540, // Give it more time for long documents
-      memory: "2GiB", // Give it more memory
-      secrets: ["GEMINI_API_KEY"],
-    },
-    async (event) => {
-      if (!genAI) {
-        genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      }
-      // We need a model with a large context window for this task
-      const model = genAI.getGenerativeModel({model: "gemini-1.5-pro-latest"});
+exports.processSyllabusText = onCall({
+  region: DEPLOY_REGION,
+  timeoutSeconds: 540,
+  memory: "2GiB",
+  cors: true, // IMPORTANT: Enables calling from your web app
+}, async (request) => {
+  if (!request.auth) {
+    throw new functions.https.HttpsError(
+        "unauthenticated", "You must be logged in.",
+    );
+  }
 
-      const {bucket: fileBucket, name: filePath, contentType} = event.data;
+  const {syllabusText} = request.data;
+  if (!syllabusText) {
+    throw new functions.https.HttpsError(
+        "invalid-argument", "The function requires 'syllabusText' data.",
+    );
+  }
 
-      // We'll create a special folder in Storage for syllabus uploads
-      if (!filePath.startsWith("syllabus_uploads/") || contentType !== "application/pdf") {
-        console.log("This is not a new syllabus PDF. Exiting.");
-        return null;
-      }
+  // Use the reliable VertexAI client
+  if (!vertexAI) {
+    vertexAI = new VertexAI({
+      project: process.env.GCLOUD_PROJECT,
+      location: DEPLOY_REGION,
+    });
+  }
+  const model = vertexAI.getGenerativeModel({model: "gemini-1.5-pro-latest"});
 
-      const {teacherId} = event.data.metadata || {};
-      if (!teacherId) {
-        console.error("Missing teacherId metadata on the uploaded file. Exiting.");
-        return null;
-      }
+  try {
+    const teacherId = request.auth.uid;
+    const prompt = `You are an expert curriculum architect for Indian schools.
+    Analyze this syllabus text:
+    --- SYLLABUS TEXT ---
+    ${syllabusText}
+    --- END SYLLABUS TEXT ---
+    Your primary task is to break it down into a structured 36-week school year plan.
+    For each week, identify the main topics to be taught.
+    Respond ONLY with a valid JSON array. Do not include markdown formatting like \`\`\`json.
+    Each object in the array must represent a single topic and have these three keys: "topic" (string), "grade" (number, if specified), and "weekNumber" (number).`;
 
-      try {
-        console.log(`Processing new syllabus PDF: ${filePath}`);
-        const bucket = getStorage().bucket(fileBucket);
-        const file = bucket.file(filePath);
-        const [pdfBuffer] = await file.download();
+    console.log("Calling Vertex AI to architect the yearly plan from text...");
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.candidates[0].content.parts[0].text;
 
-        const pdfPart = {
-          inlineData: {
-            data: pdfBuffer.toString("base64"),
-            mimeType: "application/pdf",
-          },
-        };
+    const jsonRegex = /^```json\s*|```\s*$/g;
+    const cleanJsonString = responseText.replace(jsonRegex, "");
+    const syllabusArray = JSON.parse(cleanJsonString);
 
-        const prompt = `You are an expert curriculum architect for Indian schools.
-      Analyze this entire curriculum PDF. Your primary task is to break it down into a structured 36-week school year plan.
-      For each week, identify the main topics to be taught.
-      Respond ONLY with a valid JSON array. Do not include markdown.
-      Each object in the array must represent a single topic and have these three keys: "topic" (string), "grade" (number, if specified), and "weekNumber" (number).`;
+    console.log(`AI generated a ${syllabusArray.length}-item syllabus. Saving to Firestore...`);
+    const db = getFirestore();
+    const batch = db.batch();
 
-        console.log("Calling Gemini 1.5 Pro to architect the yearly plan...");
-        const result = await model.generateContent([prompt, pdfPart]);
-        const response = await result.response;
-        const syllabusArray = JSON.parse(response.text());
+    syllabusArray.forEach((item) => {
+      const docRef = db.collection("syllabusPlan").doc();
+      batch.set(docRef, {
+        ...item,
+        teacherId: teacherId,
+        isPlanned: false,
+      });
+    });
 
-        console.log(`AI generated a ${syllabusArray.length}-item syllabus. Saving to Firestore...`);
-        const db = getFirestore();
-        const batch = db.batch();
-
-        // Save each generated topic to the syllabusPlan collection
-        syllabusArray.forEach((item) => {
-          const docRef = db.collection("syllabusPlan").doc(); // Create a new doc
-          batch.set(docRef, {
-            ...item,
-            teacherId: teacherId,
-            isPlanned: false, // This flag is still needed for our n8n workflow
-          });
-        });
-
-        await batch.commit();
-        console.log("Successfully saved the entire yearly syllabus plan to Firestore.");
-        return null;
-      } catch (error) {
-        console.error("CRITICAL ERROR in processSyllabus function:", error);
-        return null;
-      }
-    },
-);
+    await batch.commit();
+    console.log("Successfully saved the entire yearly syllabus plan from text.");
+    return {success: true, message: "Syllabus processed successfully!"};
+  } catch (error) {
+    console.error("CRITICAL ERROR in processSyllabusText function:", error);
+    throw new functions.https.HttpsError(
+        "internal", "Failed to process syllabus text.",
+    );
+  }
+});
