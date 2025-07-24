@@ -1,7 +1,7 @@
 // frontend/src/components/Sidebar.jsx
 
 import { useState } from "react";
-import { Menu, Home, Book, Users, Award, Feather, FileText, Bot, PenSquare, LogOut, UploadCloud} from "lucide-react";
+import { Menu, Home, Book, Users, Award, Feather, FileText, Bot, PenSquare, LogOut, UploadCloud, BrainCircuit } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase"; // Ensure your firebase config path is correct
@@ -15,6 +15,7 @@ const mainLinks = [
 ];
 
 const aiToolLinks = [
+  { icon: <BrainCircuit size={20} />, label: "Sahayak Agent", to: "/dashboard/agent" },
   { icon: <FileText size={20} />, label: "Worksheets", to: "/dashboard/worksheets" },
   { icon: <Feather size={20} />, label: "Story Generator", to: "/dashboard/story" },
   { icon: <Bot size={20} />, label: "Concept Explainer", to: "/dashboard/concept" },

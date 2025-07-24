@@ -17,6 +17,7 @@ import StoryGeneratorPage from "./pages/StoryGeneratorPage";
 import ConceptExplainerPage from "./pages/ConceptExplainerPage";
 import ChalkboardViewPage from "./pages/ChalkboardViewPage";
 import SyllabusUploader from "./pages/SyllabusUploader";
+import SahayakAgentPage from "./pages/SahayakAgentPage";
 
 // Import our new auth components
 import AuthProvider from "./context/AuthContext";
@@ -112,7 +113,7 @@ function App() {
             <Route path="dashboard/concept" element={<ConceptExplainerPage />} />
             <Route path="dashboard/chalkboard" element={<ChalkboardViewPage />} />
             <Route path="dashboard/syllabus-upload" element={<SyllabusUploader />} />
-            
+            <Route path="dashboard/agent" element={<SahayakAgentPage />} />
           </Route>
           {/* ------------------------------------------- */}
 

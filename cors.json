@@ -1,0 +1,13 @@
+[
+    {
+      "origin": ["https://rewise-466313.web.app", "http://localhost:5173"],
+      "method": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      "responseHeader": [
+        "Content-Type",
+        "Authorization",
+        "X-Goog-Resumable",
+        "Origin"
+      ],
+      "maxAgeSeconds": 3600
+    }
+  ]

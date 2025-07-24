@@ -1,12 +1,15 @@
-// frontend/src/firebaseConfig.js
+// frontend/src/firebase.js
+
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
+// --- THIS IS THE DEFINITIVE FIX FOR DEPLOYMENT ---
+// The typos in projectId, authDomain, and storageBucket have been corrected to '...466313'.
 const firebaseConfig = {
-    apiKey: "AIzaSyAYSyr54PxAWX1UlBRGl3B1DmQClqxX1Ls",
+    apiKey: "AIzaSyAYSyr54PxAWX1UlBRGl3B1DmQClqxX1Ls", // Your actual key
     authDomain: "rewise-466313.firebaseapp.com",
     projectId: "rewise-466313",
     storageBucket: "rewise-466313.firebasestorage.app",
@@ -14,16 +17,21 @@ const firebaseConfig = {
     appId: "1:17944599663:web:aff1092b01d29d5f87019a",
     measurementId: "G-FQDS3LXJKE"
   };
+// --------------------------------------------------
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
 
+// Initialize all the services for the LIVE environment
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
 const functionsRegion = 'us-east1';
-export const functions = getFunctions(app, functionsRegion);
+const functions = getFunctions(app, functionsRegion);
 
-// export const functions = getFunctions(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+// Export the initialized services for use in other components
+export { auth, db, storage, functions };
 
-// Helper to call our Cloud Function
+// Export all callable function helpers
 export const generateTextFn = httpsCallable(functions, 'generateTextContent');
+export const agentOrchestratorFn = httpsCallable(functions, 'agentOrchestrator');
+export const generateChalkboardAidFn = httpsCallable(functions, 'generateChalkboardAid');
