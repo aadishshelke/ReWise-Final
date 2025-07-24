@@ -462,35 +462,32 @@ exports.generateChalkboardAid = onCall({
   }
 });
 
+// functions/index.js (replace the existing processSyllabusText function with this)
+
 exports.processSyllabusText = onCall({
+  // --- CHANGE 1: MATCHING THE WORKING PATTERN ---
   region: DEPLOY_REGION,
+  secrets: ["GEMINI_API_KEY"], // Added to use the same auth as other functions
   timeoutSeconds: 540,
   memory: "2GiB",
-  cors: true, // IMPORTANT: Enables calling from your web app
+  // ------------------------------------------
 }, async (request) => {
   if (!request.auth) {
-    throw new functions.https.HttpsError(
-        "unauthenticated", "You must be logged in.",
-    );
+    throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
   }
-
   const {syllabusText} = request.data;
   if (!syllabusText) {
-    throw new functions.https.HttpsError(
-        "invalid-argument", "The function requires 'syllabusText' data.",
-    );
+    throw new functions.https.HttpsError("invalid-argument", "The function requires 'syllabusText' data.");
   }
-
-  // Use the reliable VertexAI client
-  if (!vertexAI) {
-    vertexAI = new VertexAI({
-      project: process.env.GCLOUD_PROJECT,
-      location: DEPLOY_REGION,
-    });
-  }
-  const model = vertexAI.getGenerativeModel({model: "gemini-1.5-pro-latest"});
 
   try {
+    // --- CHANGE 2: USE THE SAME CLIENT AND MODEL ---
+    if (!genAI) {
+      genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    }
+    const model = genAI.getGenerativeModel({model: MODEL_NAME}); // Using MODEL_NAME
+    // ----------------------------------------------
+
     const teacherId = request.auth.uid;
     const prompt = `You are an expert curriculum architect for Indian schools.
     Analyze this syllabus text:
@@ -502,13 +499,24 @@ exports.processSyllabusText = onCall({
     Respond ONLY with a valid JSON array. Do not include markdown formatting like \`\`\`json.
     Each object in the array must represent a single topic and have these three keys: "topic" (string), "grade" (number, if specified), and "weekNumber" (number).`;
 
-    console.log("Calling Vertex AI to architect the yearly plan from text...");
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.candidates[0].content.parts[0].text;
+    console.log("Calling Google AI SDK to architect the yearly plan...");
 
-    const jsonRegex = /^```json\s*|```\s*$/g;
-    const cleanJsonString = responseText.replace(jsonRegex, "");
-    const syllabusArray = JSON.parse(cleanJsonString);
+    // --- CHANGE 3: MATCHING THE API CALL STYLE ---
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const responseText = response.text();
+    // -------------------------------------------
+
+    let syllabusArray;
+    try {
+      const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
+      const cleanJsonString = jsonMatch ? jsonMatch[1] : responseText;
+      syllabusArray = JSON.parse(cleanJsonString);
+    } catch (jsonError) {
+      console.error("CRITICAL ERROR: Failed to parse JSON from AI response.", jsonError);
+      console.error("AI Response that caused error:", responseText);
+      throw new functions.https.HttpsError("internal", "The AI returned an invalid format. Please try again.");
+    }
 
     console.log(`AI generated a ${syllabusArray.length}-item syllabus. Saving to Firestore...`);
     const db = getFirestore();
@@ -522,14 +530,13 @@ exports.processSyllabusText = onCall({
         isPlanned: false,
       });
     });
+
     await batch.commit();
     console.log("Successfully saved the entire yearly syllabus plan from text.");
     return {success: true, message: "Syllabus processed successfully!"};
   } catch (error) {
     console.error("CRITICAL ERROR in processSyllabusText function:", error);
-    throw new functions.https.HttpsError(
-        "internal", "Failed to process syllabus text.",
-    );
+    throw new functions.https.HttpsError("internal", error.message || "Failed to process syllabus text.");
   }
 });
 
