@@ -18,8 +18,9 @@ const admin = require("firebase-admin");
 initializeApp();
 
 const DEPLOY_REGION = "us-east1";
+// const IMAGE_DEPLOY_REGION = "us-central1";
 const MODEL_NAME = "gemini-1.5-flash-latest";
-const IMAGE_MODEL_NAME = "imagegeneration@0.0.5"; // Stable Imagen model
+const IMAGE_MODEL_NAME = "imagen-3.0-fast-generate-001"; // Stable Imagen model
 const PRO_MODEL_NAME = "gemini-1.5-pro-latest"; // For complex reasoning
 
 // We will initialize the client inside the function handlers.
@@ -379,6 +380,14 @@ which is an array of three worksheet objects. Follow this schema precisely:
           createdAt: new Date(),
         });
 
+        // *** NEW: WRITE TO THE MEMORY LOG ***
+        await db.collection("userActivityLog").add({
+          teacherId: teacherId,
+          activityType: "createWorksheet",
+          topic: topic,
+          createdAt: new Date(),
+        });
+
         console.log(`Worksheet successfully saved for teacher ${teacherId}`);
         return null;
       } catch (error) {
@@ -390,51 +399,71 @@ which is an array of three worksheet objects. Follow this schema precisely:
 
 exports.generateChalkboardAid = onCall({
   region: DEPLOY_REGION,
-  // NO LONGER NEEDS SECRETS, as it uses the service account identity
   timeoutSeconds: 300,
   memory: "1GiB",
 }, async (request) => {
-  // Initialize Vertex AI client using the function's own identity (ADC)
+  // 1. Enhanced Logging: Log the start of the function with a clear identifier.
+  console.log("generateChalkboardAid: Function triggered.");
+
+  // Initialize Vertex AI client using the function's own identity (ADC).
   if (!vertexAI) {
     vertexAI = new VertexAI({
       project: process.env.GCLOUD_PROJECT,
       location: DEPLOY_REGION,
     });
+    console.log("generateChalkboardAid: VertexAI client initialized.");
   }
 
+  // 2. Robust Authentication and Input Validation
   if (!request.auth) {
+    console.error("generateChalkboardAid: Unauthenticated request.");
     throw new functions.https.HttpsError(
-        "unauthenticated", "You must be logged in.",
+        "unauthenticated", "You must be logged in to use this feature.",
     );
   }
+  console.log(`generateChalkboardAid: Request from authenticated user: ${request.auth.uid}`);
+
   const {prompt} = request.data;
-  if (!prompt) {
+  if (!prompt || typeof prompt !== "string" || prompt.trim() === "") {
+    console.error("generateChalkboardAid: Invalid or missing prompt.", {prompt});
     throw new functions.https.HttpsError(
-        "invalid-argument", "A prompt is required.",
+        "invalid-argument", "A valid, non-empty prompt is required.",
     );
   }
+  console.log(`generateChalkboardAid: Received prompt: "${prompt}"`);
 
   try {
-    const fullPrompt = `A simple, clean, black and white line drawing of
-      '${prompt}'. The style should be a clear diagram suitable for a
-      chalkboard, with minimal shading. White background.`;
+    const fullPrompt = `A simple, clean, black and white line drawing of '${prompt}'. The style should be a clear diagram suitable for a chalkboard, with minimal shading. White background.`;
 
-    console.log("Calling Imagen API with prompt:", fullPrompt);
+    console.log("generateChalkboardAid: Calling Imagen API with full prompt:", fullPrompt);
 
     const imageModel = vertexAI.getGenerativeModel({model: IMAGE_MODEL_NAME});
+
+    // 3. Correct API Call and Response Parsing
     const resp = await imageModel.generateContent({
       contents: [{role: "user", parts: [{text: fullPrompt}]}],
     });
 
-    const base64ImageData =
-    resp.response.candidates[0].content.parts[0].fileData.fileUri;
+    // Detailed logging of the raw API response for debugging.
+    console.log("generateChalkboardAid: Raw Imagen API response received.");
+
+    // Defensive programming: Check if the response structure is as expected.
+    if (!resp.response.candidates?.[0]?.content?.parts?.[0]?.fileData?.fileUri) {
+      console.error("generateChalkboardAid: Unexpected API response structure.", {response: resp.response});
+      throw new functions.https.HttpsError("internal", "Failed to parse the image data from the AI's response.");
+    }
+
+    const base64ImageData = resp.response.candidates[0].content.parts[0].fileData.fileUri.replace("data:image/png;base64,", "");
     const imageBuffer = Buffer.from(base64ImageData, "base64");
 
-    console.log("Image generated. Uploading to Cloud Storage...");
+    console.log("generateChalkboardAid: Image data successfully parsed.");
 
+    // 4. Reliable Cloud Storage Upload
     const bucket = getStorage().bucket();
     const filePath = `chalkboardAids/${request.auth.uid}/${Date.now()}.png`;
     const file = bucket.file(filePath);
+
+    console.log(`generateChalkboardAid: Uploading image to Cloud Storage at: ${filePath}`);
 
     await file.save(imageBuffer, {
       metadata: {contentType: "image/png"},
@@ -442,8 +471,9 @@ exports.generateChalkboardAid = onCall({
     await file.makePublic();
 
     const publicUrl = file.publicUrl();
-    console.log("Image uploaded successfully:", publicUrl);
+    console.log("generateChalkboardAid: Image uploaded successfully:", publicUrl);
 
+    // 5. Secure Firestore Database Write
     const db = getFirestore();
     await db.collection("chalkboardAids").add({
       teacherId: request.auth.uid,
@@ -452,12 +482,30 @@ exports.generateChalkboardAid = onCall({
       createdAt: new Date(),
     });
 
-    console.log("Chalkboard aid saved to Firestore.");
+    console.log("generateChalkboardAid: Chalkboard aid saved to Firestore.");
     return {imageUrl: publicUrl};
   } catch (error) {
-    console.error("CRITICAL ERROR in image generation:", error);
+    // 6. Comprehensive Error Handling
+    console.error("CRITICAL ERROR in generateChalkboardAid:", error);
+
+    // Check for specific error types to give better feedback to the client.
+    if (error.code === 7 && error.message.includes("PERMISSION_DENIED")) {
+      throw new functions.https.HttpsError(
+          "permission-denied",
+          "The function does not have permission to access Vertex AI. Please check IAM roles.",
+          error.details,
+      );
+    }
+
+    if (error instanceof functions.https.HttpsError) {
+      throw error; // Re-throw HttpsError to the client.
+    }
+
+    // For any other type of error, return a generic internal error.
     throw new functions.https.HttpsError(
-        "internal", "Failed to generate the image.",
+        "internal",
+        "An unexpected error occurred while generating the image.",
+        error.message,
     );
   }
 });
@@ -672,10 +720,18 @@ Now, determine the appropriate tool calls.`;
         return modelForTool.generateContent(fullPrompt).then(async (toolResult) => {
           const content = (await toolResult.response).text();
           const db = getFirestore();
+          // Save the story as before
           await db.collection("stories").add({
             teacherId: request.auth.uid,
             userPrompt: storyTopic,
             generatedContent: content,
+            createdAt: new Date(),
+          });
+          // *** NEW: WRITE TO THE MEMORY LOG ***
+          await db.collection("userActivityLog").add({
+            teacherId: request.auth.uid,
+            activityType: "generateStory",
+            topic: storyTopic,
             createdAt: new Date(),
           });
           return {type: "summary", summary: `Story about "${storyTopic}"`};
@@ -688,10 +744,18 @@ Now, determine the appropriate tool calls.`;
         return modelForTool.generateContent(fullPrompt).then(async (toolResult) => {
           const content = (await toolResult.response).text();
           const db = getFirestore();
+          // Save the concept as before
           await db.collection("concepts").add({
             teacherId: request.auth.uid,
             userPrompt: concept,
             generatedContent: content,
+            createdAt: new Date(),
+          });
+          // *** NEW: WRITE TO THE MEMORY LOG ***
+          await db.collection("userActivityLog").add({
+            teacherId: request.auth.uid,
+            activityType: "explainConcept",
+            topic: concept,
             createdAt: new Date(),
           });
           return {type: "summary", summary: `Explanation for "${concept}"`};
@@ -742,56 +806,116 @@ Now, determine the appropriate tool calls.`;
   }
 });
 
+// DEFINITIVE REPLACEMENT for proactiveNudgeAgent
 exports.proactiveNudgeAgent = onSchedule({
   schedule: "every 24 hours",
-  region: DEPLOY_REGION,
+  region: DEPLOY_REGION, // Or "us-central1"
   secrets: ["GEMINI_API_KEY"],
-  timeoutSeconds: 300,
-  memory: "512MiB",
+  timeoutSeconds: 540,
+  memory: "1GiB",
 }, async (event) => {
+  console.log("PROACTIVE AGENT: Waking up to generate contextual suggestions.");
   if (!genAI) {
     genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   }
-  const nudgeModel = genAI.getGenerativeModel({model: MODEL_NAME});
+  const suggestionModel = genAI.getGenerativeModel({model: PRO_MODEL_NAME});
   const db = getFirestore();
 
-  console.log("Running Simplified Proactive Nudge Agent...");
-
-  // In this simplified version, we need a way to get a teacher to assign the nudge to.
-  // We'll just grab the first teacher we find in the 'teachers' collection.
-  // NOTE: For this to work, you must have at least one user created.
-  const teachersQuery = db.collection("teachers").limit(1);
-  const teachersSnapshot = await teachersQuery.get();
-
-  if (teachersSnapshot.empty) {
-    console.log("No teachers found. Cannot generate a nudge.");
-    return null;
+  const usersSnapshot = await db.collection("users").get(); // Assuming you have a 'users' collection
+  if (usersSnapshot.empty) {
+    console.log("PROACTIVE AGENT: No users found. Sleeping.");
+    return;
   }
-  const teacherId = teachersSnapshot.docs[0].id;
-  console.log(`Found a teacher to receive a nudge: ${teacherId}`);
 
-  try {
-    const nudgePrompt = `You are Sahayak, an AI teaching companion.
-Generate a single, encouraging, and creative "Teaching Tip of the Day" for a teacher in a rural Indian school.
-The tip should be short (one sentence) and easy to implement.
-Example: "Try starting tomorrow's class with a fun one-minute energizer game!"
-Another Example: "How about asking students to draw a picture related to today's lesson?"`;
+  for (const userDoc of usersSnapshot.docs) {
+    const teacherId = userDoc.id;
+    console.log(`PROACTIVE AGENT: Analyzing memory for teacher: ${teacherId}`);
 
-    console.log("Generating a generic teaching tip...");
-    const result = await nudgeModel.generateContent(nudgePrompt);
-    const nudgeText = result.response.text();
+    try {
+      // 1. Read the user's recent memory
+      const activityQuery = db.collection("userActivityLog")
+          .where("teacherId", "==", teacherId)
+          .orderBy("createdAt", "desc")
+          .limit(10);
+      const activitySnapshot = await activityQuery.get();
 
-    await db.collection("nudges").add({
-      teacherId: teacherId,
-      suggestion: nudgeText,
-      createdAt: new Date(),
-      seen: false,
-    });
+      if (activitySnapshot.empty) {
+        console.log(`No activity found for teacher ${teacherId}. Skipping.`);
+        continue;
+      }
 
-    console.log(`Successfully saved nudge for teacher ${teacherId}: "${nudgeText}"`);
-    return null;
-  } catch (error) {
-    console.error("CRITICAL ERROR in proactiveNudgeAgent:", error);
-    return null; // Ensure the function exits gracefully
+      // 2. Format the memory for the AI
+      const recentActivities = activitySnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return `- Created a '${data.activityType}' on the topic of '${data.topic}'.`;
+      }).join("\n");
+
+      // 3. Craft a powerful prompt to generate ACTIONABLE suggestions
+      const prompt = `
+        You are "Sahayak," an AI teaching companion. Your goal is to be proactive.
+        Based on the teacher's recent activity, generate 2-3 new, creative, and actionable teaching ideas.
+
+        **Teacher's Recent Activity (Memory):**
+        ${recentActivities}
+
+        **Your Task:**
+        Think about what topics are related or what would be a good next step. For example, if they taught a science concept, suggest a story about a famous scientist. If they told a story, suggest explaining a key concept from it.
+
+        **CRITICAL INSTRUCTIONS:**
+        - Generate a JSON array of 2-3 suggestion objects.
+        - Your entire response MUST be ONLY the valid JSON array. Do not use markdown.
+        - Each object in the array MUST follow this exact schema:
+        {
+          "suggestionText": "A user-facing string. This is the text the teacher will see. Make it engaging!",
+          "actionType": "The tool to call. Must be one of: 'generateStory', 'explainConcept'.",
+          "actionPayload": {
+            "topic": "The specific topic for the tool. This should be a new, related idea."
+          }
+        }
+
+        **Example JSON Output:**
+        [
+          {
+            "suggestionText": "Since you explained Photosynthesis, shall I tell a fun story about a talking tree who loves the sun?",
+            "actionType": "generateStory",
+            "actionPayload": {
+              "topic": "A talking tree that loves the sun and photosynthesis"
+            }
+          },
+          {
+            "suggestionText": "You recently created a worksheet on the Solar System. How about a simple explanation of 'black holes' for your older students?",
+            "actionType": "explainConcept",
+            "actionPayload": {
+              "topic": "what are black holes"
+            }
+          }
+        ]
+      `;
+
+      // 4. Generate and save the structured suggestions
+      const result = await suggestionModel.generateContent(prompt);
+      const responseText = result.response.text();
+      const cleanJsonString = responseText.replace(/^```json\s*|```\s*$/g, "").trim();
+      const suggestions = JSON.parse(cleanJsonString);
+
+      // Save to a new sub-collection for the user
+      const suggestionsRef = db.collection("users").doc(teacherId).collection("proactiveSuggestions");
+      const batch = db.batch();
+
+      suggestions.forEach((suggestion) => {
+        const docRef = suggestionsRef.doc(); // Auto-generate ID
+        batch.set(docRef, {
+          ...suggestion,
+          createdAt: new Date(),
+          isNew: true, // For the UI to highlight
+        });
+      });
+      await batch.commit();
+
+      console.log(`PROACTIVE AGENT: Successfully generated ${suggestions.length} suggestions for teacher ${teacherId}`);
+    } catch (error) {
+      console.error(`PROACTIVE AGENT: CRITICAL ERROR for teacher ${teacherId}:`, error);
+    }
   }
+  return null;
 });

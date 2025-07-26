@@ -8,6 +8,7 @@ import { ref, uploadBytesResumable } from 'firebase/storage';
 import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { Bot, User, UploadCloud } from 'lucide-react';
+import ProactiveSuggestions from '../components/ProactiveSuggestions';
 
 const agentOrchestratorFn = httpsCallable(functions, 'agentOrchestrator');
 
@@ -142,7 +143,7 @@ const SahayakAgentPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="p-4 border rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-900/30 text-left">
+      {/* <div className="p-4 border rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-900/30 text-left">
         <h2 className="text-lg font-semibold text-yellow-800 dark:text-yellow-200">Proactive Suggestion ✨</h2>
         {isNudgeLoading && <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-2">Checking for new ideas...</p>}
         {!isNudgeLoading && latestNudge && (
@@ -151,7 +152,9 @@ const SahayakAgentPage = () => {
         {!isNudgeLoading && !latestNudge && (
           <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-2">No new suggestions right now. Generate some content to give me ideas!</p>
         )}
-      </div>
+      </div> */}
+
+      <ProactiveSuggestions />
 
       <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-900/30 space-y-4 text-left">
         <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Chat with Sahayak</h2>
