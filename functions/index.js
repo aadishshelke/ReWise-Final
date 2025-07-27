@@ -21,7 +21,7 @@ initializeApp();
 const DEPLOY_REGION = "us-east1";
 // const IMAGE_DEPLOY_REGION = "us-central1";
 const MODEL_NAME = "gemini-2.0-flash-001";
-const IMAGE_MODEL_NAME = "imagen-3.0-generate-002"; // Stable Imagen model
+// const IMAGE_MODEL_NAME = "imagen-3.0-generate-002"; // Stable Imagen model
 // const PRO_MODEL_NAME = "gemini-1.5-pro-latest"; // For complex reasoning
 
 // We will initialize the client inside the function handlers.
@@ -438,124 +438,250 @@ which is an array of three worksheet objects. Follow this schema precisely:
     },
 );
 
+// exports.generateChalkboardAid = onCall({
+//   region: DEPLOY_REGION,
+//   timeoutSeconds: 300,
+//   memory: "1GiB",
+// }, async (request) => {
+//   // 1. Enhanced Logging: Log the start of the function with a clear identifier.
+//   console.log("generateChalkboardAid: Function triggered.");
+
+//   // Initialize Vertex AI client using the function's own identity (ADC).
+//   if (!vertexAI) {
+//     vertexAI = new VertexAI({
+//       project: process.env.GCLOUD_PROJECT,
+//       location: DEPLOY_REGION,
+//     });
+//     console.log("generateChalkboardAid: VertexAI client initialized.");
+//   }
+
+//   // 2. Robust Authentication and Input Validation
+//   if (!request.auth) {
+//     console.error("generateChalkboardAid: Unauthenticated request.");
+//     throw new functions.https.HttpsError(
+//         "unauthenticated", "You must be logged in to use this feature.",
+//     );
+//   }
+//   console.log(`generateChalkboardAid: Request from authenticated user: ${request.auth.uid}`);
+
+//   const {prompt} = request.data;
+//   if (!prompt || typeof prompt !== "string" || prompt.trim() === "") {
+//     console.error("generateChalkboardAid: Invalid or missing prompt.", {prompt});
+//     throw new functions.https.HttpsError(
+//         "invalid-argument", "A valid, non-empty prompt is required.",
+//     );
+//   }
+//   console.log(`generateChalkboardAid: Received prompt: "${prompt}"`);
+
+//   try {
+//     const fullPrompt = `A simple, clean, black and white line drawing of '${prompt}'. The style should be a clear diagram suitable for a chalkboard, with minimal shading. White background.`;
+
+//     console.log("generateChalkboardAid: Calling Imagen API with full prompt:", fullPrompt);
+
+//     const imageModel = vertexAI.getGenerativeModel({model: IMAGE_MODEL_NAME});
+
+//     // 3. Correct API Call and Response Parsing
+//     const resp = await imageModel.generateContent({
+//       contents: [{role: "user", parts: [{text: fullPrompt}]}],
+//     });
+
+//     // Detailed logging of the raw API response for debugging.
+//     console.log("generateChalkboardAid: Raw Imagen API response received.");
+
+//     // Defensive programming: Check if the response structure is as expected.
+//     if (!resp.response.candidates?.[0]?.content?.parts?.[0]?.fileData?.fileUri) {
+//       console.error("generateChalkboardAid: Unexpected API response structure.", {response: resp.response});
+//       throw new functions.https.HttpsError("internal", "Failed to parse the image data from the AI's response.");
+//     }
+
+//     const base64ImageData = resp.response.candidates[0].content.parts[0].fileData.fileUri.replace("data:image/png;base64,", "");
+//     const imageBuffer = Buffer.from(base64ImageData, "base64");
+
+//     console.log("generateChalkboardAid: Image data successfully parsed.");
+
+//     // 4. Reliable Cloud Storage Upload
+//     const bucket = getStorage().bucket();
+//     const filePath = `chalkboardAids/${request.auth.uid}/${Date.now()}.png`;
+//     const file = bucket.file(filePath);
+
+//     console.log(`generateChalkboardAid: Uploading image to Cloud Storage at: ${filePath}`);
+
+//     await file.save(imageBuffer, {
+//       metadata: {contentType: "image/png"},
+//     });
+//     await file.makePublic();
+
+//     const publicUrl = file.publicUrl();
+//     console.log("generateChalkboardAid: Image uploaded successfully:", publicUrl);
+
+//     // 5. Secure Firestore Database Write
+//     const db = getFirestore();
+//     await db.collection("chalkboardAids").add({
+//       teacherId: request.auth.uid,
+//       userPrompt: prompt,
+//       imageUrl: publicUrl,
+//       createdAt: new Date(),
+//     });
+
+//     await db.collection("userActivityLog").add({
+//       teacherId: request.auth.uid,
+//       activityType: "createChalkboardAid",
+//       topic: prompt, // The user's original prompt is the topic
+//       createdAt: new Date(),
+//     });
+//     console.log("Chalkboard aid saved to Firestore.");
+//     return {imageUrl: publicUrl};
+//   } catch (error) {
+//     // 6. Comprehensive Error Handling
+//     console.error("CRITICAL ERROR in generateChalkboardAid:", error);
+
+//     // Check for specific error types to give better feedback to the client.
+//     if (error.code === 7 && error.message.includes("PERMISSION_DENIED")) {
+//       throw new functions.https.HttpsError(
+//           "permission-denied",
+//           "The function does not have permission to access Vertex AI. Please check IAM roles.",
+//           error.details,
+//       );
+//     }
+
+//     if (error instanceof functions.https.HttpsError) {
+//       throw error; // Re-throw HttpsError to the client.
+//     }
+
+//     // For any other type of error, return a generic internal error.
+//     throw new functions.https.HttpsError(
+//         "internal",
+//         "An unexpected error occurred while generating the image.",
+//         error.message,
+//     );
+//   }
+// });
+
+// functions/index.js
+
+// ... (keep all your other functions at the top of the file)
+
+// =========================================================================
+// === THIS IS THE NEW, ASCII/EMOJI DIAGRAM VERSION. REPLACE THE OLD ONE. ===
+// =========================================================================
+
 exports.generateChalkboardAid = onCall({
   region: DEPLOY_REGION,
-  timeoutSeconds: 300,
+  timeoutSeconds: 120,
   memory: "1GiB",
 }, async (request) => {
-  // 1. Enhanced Logging: Log the start of the function with a clear identifier.
-  console.log("generateChalkboardAid: Function triggered.");
+  console.log("generateChalkboardAid (ASCII Diagram): Function triggered.");
 
-  // Initialize Vertex AI client using the function's own identity (ADC).
+  // 1. --- INITIALIZATION ---
   if (!vertexAI) {
     vertexAI = new VertexAI({
       project: process.env.GCLOUD_PROJECT,
       location: DEPLOY_REGION,
     });
-    console.log("generateChalkboardAid: VertexAI client initialized.");
   }
 
-  // 2. Robust Authentication and Input Validation
+  // 2. --- VALIDATION ---
   if (!request.auth) {
-    console.error("generateChalkboardAid: Unauthenticated request.");
-    throw new functions.https.HttpsError(
-        "unauthenticated", "You must be logged in to use this feature.",
-    );
+    throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
   }
-  console.log(`generateChalkboardAid: Request from authenticated user: ${request.auth.uid}`);
-
   const {prompt} = request.data;
   if (!prompt || typeof prompt !== "string" || prompt.trim() === "") {
-    console.error("generateChalkboardAid: Invalid or missing prompt.", {prompt});
-    throw new functions.https.HttpsError(
-        "invalid-argument", "A valid, non-empty prompt is required.",
-    );
+    throw new functions.https.HttpsError("invalid-argument", "A valid prompt is required.");
   }
-  console.log(`generateChalkboardAid: Received prompt: "${prompt}"`);
+  console.log(`generateChalkboardAid (ASCII Diagram): Received prompt: "${prompt}"`);
 
   try {
-    const fullPrompt = `A simple, clean, black and white line drawing of '${prompt}'. The style should be a clear diagram suitable for a chalkboard, with minimal shading. White background.`;
+    // 3. --- NEW, HIGHLY-DETAILED PROMPT ENGINEERING ---
+    const fullPrompt = `
+      You are a creative assistant who designs text-based diagrams (ASCII art) for teachers.
+      Your task is to convert the topic "${prompt}" into a visually appealing, vertical flowchart using only text characters, symbols, and relevant emojis.
 
-    console.log("generateChalkboardAid: Calling Imagen API with full prompt:", fullPrompt);
+      **CRITICAL INSTRUCTIONS:**
+      - Your entire response MUST be ONLY the text-based diagram. Do not include any explanations, introductions, or markdown code blocks like \`\`\`.
+      - The diagram must be simple, clear, and easy for a teacher to copy onto a chalkboard.
+      - Use boxes, arrows (like 'v' or '->'), and indentation to show the flow and structure.
+      - Use emojis to make the diagram engaging and visually informative.
+      - Your output MUST follow the style of this example precisely.
 
-    const imageModel = vertexAI.getGenerativeModel({model: IMAGE_MODEL_NAME});
+      **EXAMPLE for the topic "the water cycle":**
+                         ☀️
+                      [Sun]
+                        |
+                        v
+                 ----------------
+                 |  Evaporation  |
+                 ----------------
+                   Water heats up
+                   -> turns into
+                   water vapor 🌫️
+                        |
+                        v
+             -----------------------
+             |   Condensation 🌥️   |
+             -----------------------
+              Vapor cools -> forms
+                 water droplets
+                  = Clouds ☁️
+                        |
+                        v
+              ---------------------
+              |  Precipitation 🌧️  |
+              ---------------------
+               Clouds become heavy
+              -> Water falls down
+                (Rain, Snow, Hail)
+                        |
+                        v
+             -----------------------
+             |   Collection 🌊     |
+             -----------------------
+               Water gathers into
+              rivers, lakes, seas
+                        |
+                        v
+               🔁 Cycle Repeats 🔁
+    `;
 
-    // 3. Correct API Call and Response Parsing
-    const resp = await imageModel.generateContent({
-      contents: [{role: "user", parts: [{text: fullPrompt}]}],
-    });
+    // 4. --- API CALL TO TEXT MODEL ---
+    const textModel = vertexAI.getGenerativeModel({model: MODEL_NAME});
+    console.log("generateChalkboardAid (ASCII Diagram): Calling Vertex AI text model.");
 
-    // Detailed logging of the raw API response for debugging.
-    console.log("generateChalkboardAid: Raw Imagen API response received.");
+    const result = await textModel.generateContent(fullPrompt);
+    const responseText = result.response.candidates[0].content.parts[0].text;
 
-    // Defensive programming: Check if the response structure is as expected.
-    if (!resp.response.candidates?.[0]?.content?.parts?.[0]?.fileData?.fileUri) {
-      console.error("generateChalkboardAid: Unexpected API response structure.", {response: resp.response});
-      throw new functions.https.HttpsError("internal", "Failed to parse the image data from the AI's response.");
-    }
+    console.log("generateChalkboardAid (ASCII Diagram): Diagram generated successfully.");
 
-    const base64ImageData = resp.response.candidates[0].content.parts[0].fileData.fileUri.replace("data:image/png;base64,", "");
-    const imageBuffer = Buffer.from(base64ImageData, "base64");
-
-    console.log("generateChalkboardAid: Image data successfully parsed.");
-
-    // 4. Reliable Cloud Storage Upload
-    const bucket = getStorage().bucket();
-    const filePath = `chalkboardAids/${request.auth.uid}/${Date.now()}.png`;
-    const file = bucket.file(filePath);
-
-    console.log(`generateChalkboardAid: Uploading image to Cloud Storage at: ${filePath}`);
-
-    await file.save(imageBuffer, {
-      metadata: {contentType: "image/png"},
-    });
-    await file.makePublic();
-
-    const publicUrl = file.publicUrl();
-    console.log("generateChalkboardAid: Image uploaded successfully:", publicUrl);
-
-    // 5. Secure Firestore Database Write
+    // 5. --- FIRESTORE WRITE ---
     const db = getFirestore();
     await db.collection("chalkboardAids").add({
       teacherId: request.auth.uid,
       userPrompt: prompt,
-      imageUrl: publicUrl,
+      generatedContent: responseText,
       createdAt: new Date(),
     });
 
     await db.collection("userActivityLog").add({
       teacherId: request.auth.uid,
       activityType: "createChalkboardAid",
-      topic: prompt, // The user's original prompt is the topic
+      topic: prompt,
       createdAt: new Date(),
     });
-    console.log("Chalkboard aid saved to Firestore.");
-    return {imageUrl: publicUrl};
+    console.log("Chalkboard aid diagram saved to Firestore.");
+
+    // 6. --- RETURN VALUE ---
+    return {generatedContent: responseText};
   } catch (error) {
-    // 6. Comprehensive Error Handling
-    console.error("CRITICAL ERROR in generateChalkboardAid:", error);
-
-    // Check for specific error types to give better feedback to the client.
-    if (error.code === 7 && error.message.includes("PERMISSION_DENIED")) {
-      throw new functions.https.HttpsError(
-          "permission-denied",
-          "The function does not have permission to access Vertex AI. Please check IAM roles.",
-          error.details,
-      );
-    }
-
-    if (error instanceof functions.https.HttpsError) {
-      throw error; // Re-throw HttpsError to the client.
-    }
-
-    // For any other type of error, return a generic internal error.
+    console.error("CRITICAL ERROR in generateChalkboardAid (ASCII Diagram):", error);
     throw new functions.https.HttpsError(
         "internal",
-        "An unexpected error occurred while generating the image.",
+        "An unexpected error occurred while generating the chalkboard diagram.",
         error.message,
     );
   }
 });
+
+
+// ... (keep all your other existing functions below this)
 
 // functions/index.js (replace the existing processSyllabusText function with this)
 
@@ -691,7 +817,10 @@ exports.agentOrchestrator = onCall({
           parameters: {
             type: "OBJECT",
             properties: {
-              topic: {type: "STRING", description: "The core educational theme the story should be about."},
+              topic: {
+                type: "STRING",
+                description: "The core educational theme the story should be about.",
+              },
             },
             required: ["topic"],
           },
@@ -702,7 +831,10 @@ exports.agentOrchestrator = onCall({
           parameters: {
             type: "OBJECT",
             properties: {
-              concept: {type: "STRING", description: "The specific concept or question to explain."},
+              concept: {
+                type: "STRING",
+                description: "The specific concept or question to explain.",
+              },
             },
             required: ["concept"],
           },
@@ -713,9 +845,27 @@ exports.agentOrchestrator = onCall({
           parameters: {
             type: "OBJECT",
             properties: {
-              topic: {type: "STRING", description: "The topic the worksheet should be about."},
+              topic: {
+                type: "STRING",
+                description: "The topic the worksheet should be about.",
+              },
             },
             required: ["topic"],
+          },
+        },
+        // *** THIS IS THE NEW TOOL FOR ATTENDANCE ANALYSIS ***
+        {
+          name: "analyzeAttendance",
+          description: "Use this tool when the teacher asks any question about student attendance data, such as 'who has low attendance', 'what is the attendance ratio', 'attendance summary', or 'list students who were absent yesterday'.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              query: {
+                type: "STRING",
+                description: "The specific question the teacher is asking about attendance. For example: 'Who has been absent the most this month?'",
+              },
+            },
+            required: ["query"],
           },
         },
       ],
@@ -793,12 +943,65 @@ exports.agentOrchestrator = onCall({
         await db.collection("userActivityLog").add({teacherId: request.auth.uid, activityType: "requestWorksheet", topic: worksheetTopic, createdAt: new Date()});
         return {type: "ui_prompt", tool: "requestWorksheetImage", topic: worksheetTopic};
       }
+      if (call.name === "analyzeAttendance") {
+        const teacherId = request.auth.uid;
+
+        // Fetch the last 30 days of data
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const dateString = thirtyDaysAgo.toISOString().split("T")[0];
+        const attendanceQuery = db.collection("attendance").where("teacherId", "==", teacherId).where("date", ">=", dateString);
+        const snapshot = await attendanceQuery.get();
+
+        if (snapshot.empty) {
+          // Respond directly if there's no data
+          return {
+            tool: call,
+            response: {name: call.name, content: "I couldn't find any attendance data for the last 30 days to analyze."},
+          };
+        }
+
+        // Format the data for the AI
+        const attendanceData = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return `${data.date}, ${data.studentName}, ${data.status}`;
+        }).join("\n");
+
+        // Craft a new prompt for a second AI call
+        const analysisPrompt = `
+          You are an expert data analyst AI. Your task is to answer a teacher's question based on the provided attendance data.
+          RAW DATA (format: Date, Student Name, Status):
+          ---
+          ${attendanceData}
+          ---
+          TEACHER'S QUESTION: "${call.args.query}"
+          INSTRUCTIONS: Analyze the raw data to answer the teacher's question. Provide a clear, concise, and friendly answer.
+        `;
+
+        const analysisResult = await modelForTool.generateContent(analysisPrompt);
+        const analysisText = analysisResult.response.candidates[0].content.parts[0].text;
+
+        // Return the analysis as the result of the tool call
+        return {
+          tool: call,
+          response: {name: call.name, content: analysisText},
+        };
+      }
       return null;
     });
 
-
     // 5. --- PROCESS RESULTS ---
     const toolResults = await Promise.all(toolExecutionPromises);
+
+    const attendanceResult = toolResults.find((r) => r && r.tool.name === "analyzeAttendance");
+    if (attendanceResult) {
+      return {
+        type: "final_response",
+        content: attendanceResult.response.content,
+        uiPrompt: null,
+      };
+    }
+
     const successfulTools = toolResults.filter(Boolean);
 
     const uiPromptResult = successfulTools.find((t) => t.type === "ui_prompt");
@@ -1019,5 +1222,81 @@ exports.transcribeAudio = onCall({
   } catch (error) {
     console.error("transcribeAudio CRITICAL ERROR:", error);
     throw new functions.https.HttpsError("internal", "Failed to transcribe audio.");
+  }
+});
+
+exports.analyzeAttendance = onCall({
+  region: DEPLOY_REGION,
+}, async (request) => {
+  // 1. --- VALIDATION ---
+  if (!request.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Auth is required.");
+  }
+  const {userQuery} = request.data;
+  if (!userQuery) {
+    throw new functions.https.HttpsError("invalid-argument", "A query is required.");
+  }
+
+  const teacherId = request.auth.uid;
+  const db = getFirestore();
+
+  try {
+    // 2. --- FETCH DATA FROM FIRESTORE ---
+    // Get all attendance records for this teacher for the last 30 days.
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const dateString = thirtyDaysAgo.toISOString().split("T")[0];
+
+    const attendanceQuery = db.collection("attendance")
+        .where("teacherId", "==", teacherId)
+        .where("date", ">=", dateString);
+
+    const snapshot = await attendanceQuery.get();
+    if (snapshot.empty) {
+      return {answer: "I couldn't find any attendance data for the last 30 days to analyze."};
+    }
+
+    // 3. --- FORMAT DATA FOR THE AI ---
+    // Convert the data into a simple, easy-to-read text format for the AI.
+    const attendanceData = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return `${data.date}, ${data.studentName}, ${data.status}`;
+    }).join("\n");
+
+    // 4. --- CRAFT THE PROMPT ---
+    const prompt = `
+      You are an expert data analyst AI for a teacher. Your task is to answer a teacher's question based on the provided attendance data for the last 30 days.
+
+      **RAW ATTENDANCE DATA (format: Date, Student Name, Status):**
+      ---
+      ${attendanceData}
+      ---
+
+      **TEACHER'S QUESTION:**
+      "${userQuery}"
+
+      **INSTRUCTIONS:**
+      - Analyze the raw data to answer the teacher's question.
+      - Provide a clear, concise, and friendly answer.
+      - If you perform calculations (like percentages or ratios), show them simply.
+      - Be helpful and direct in your response. Do not add conversational fluff.
+    `;
+
+    // 5. --- CALL VERTEX AI ---
+    if (!vertexAI) {
+      vertexAI = new VertexAI({
+        project: process.env.GCLOUD_PROJECT,
+        location: DEPLOY_REGION,
+      });
+    }
+    const model = vertexAI.getGenerativeModel({model: MODEL_NAME}); // Using your working MODEL_NAME
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.candidates[0].content.parts[0].text;
+
+    // 6. --- RETURN THE ANSWER ---
+    return {answer: responseText};
+  } catch (error) {
+    console.error("analyzeAttendance CRITICAL ERROR:", error);
+    throw new functions.https.HttpsError("internal", "Failed to analyze attendance data.");
   }
 });
