@@ -16,8 +16,8 @@ export function BalBuddyWidget() {
         className="fixed bottom-8 right-8 bg-white rounded-full shadow-lg p-4 flex items-center space-x-2 cursor-pointer hover:shadow-xl transition"
         onClick={() => setOpen(true)}
       >
-        <img src="/balbuddy.png" alt="BalBuddy" className="h-12 w-12" />
-        <span className="font-semibold text-orange-500">BalBuddy: Need a tip?</span>
+        <img src="/rewise.jpeg" alt="ReWise AI Agent" className="h-12 w-12 rounded-full object-cover border-2 border-primary/20 shadow-md" />
+        <span className="font-semibold text-orange-500">ReWise: Need a tip?</span>
       </div>
       {open && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
@@ -29,7 +29,7 @@ export function BalBuddyWidget() {
             >
               &times;
             </button>
-            <h2 className="font-bold text-lg mb-2 text-primary">BalBuddy Quick Tips</h2>
+            <h2 className="font-bold text-lg mb-2 text-primary">ReWise Quick Tips</h2>
             <ul className="list-disc pl-5 space-y-1 text-gray-700">
               {tips.map((tip, i) => (
                 <li key={i}>{tip}</li>

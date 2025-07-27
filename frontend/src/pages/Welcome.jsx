@@ -1,7 +1,7 @@
 // frontend/src/pages/Welcome.jsx
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import balbuddy from "../assets/balbuddy.png";
+import rewise from "../assets/rewise.jpeg";
 import React, { useState } from "react";
 import { auth } from "../firebase"; // Import Firebase auth
 import {
@@ -51,9 +51,9 @@ export default function Welcome() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-softbg dark:bg-gray-950 relative">
       <img
-        src={balbuddy}
-        alt="BalBuddy"
-        className="absolute left-8 bottom-8 w-16 h-16 animate-bounce"
+        src={rewise}
+        alt="ReWise AI Agent"
+        className="absolute left-8 bottom-8 w-16 h-16 rounded-full object-cover border-2 border-primary/20 shadow-lg animate-bounce"
         style={{ animationDelay: "0.2s" }}
       />
       <motion.div
