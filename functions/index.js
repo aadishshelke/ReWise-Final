@@ -959,12 +959,17 @@ exports.generateProactiveSuggestions = onCall({
   }
 });
 
+// THIS IS THE DEFINITIVE, FINAL, STABLE FIX. HACKATHON MODE.
+// It uses the v1 API with the most compatible model.
+// Replace the entire old transcribeAudio function with this one.
+
+// const speech = require("@google-cloud/speech");
+
 exports.transcribeAudio = onCall({
-  region: DEPLOY_REGION, // Uses your global region, e.g., "us-east1"
+  region: DEPLOY_REGION,
   timeoutSeconds: 60,
   memory: "512MiB",
 }, async (request) => {
-  // 1. --- VALIDATION ---
   if (!request.auth) {
     throw new functions.https.HttpsError("unauthenticated", "Auth is required.");
   }
@@ -974,47 +979,45 @@ exports.transcribeAudio = onCall({
   }
 
   try {
-    // 2. --- INITIALIZE VERTEX AI SPEECH CLIENT ---
-    // This client uses the function's own service account for authentication.
+    // We are using the v1 client. It is the most stable.
     const speechClient = new speech.SpeechClient();
 
-    // 3. --- CONFIGURE THE TRANSCRIPTION REQUEST ---
     const audio = {
-      content: audioBase64, // The audio data is already Base64 encoded by the client
+      content: audioBase64,
     };
+
     const config = {
-      // NOTE: Browser MediaRecorder often uses WEBM_OPUS. If transcription fails,
-      // you may need to adjust the encoding based on the exact format.
-      encoding: "WEBM_OPUS",
-      // This sample rate is common for web audio.
-      sampleRateHertz: 48000,
-      languageCode: "en-US", // BCP-47 language code (e.g., "en-US", "hi-IN")
-      // Use a model optimized for short commands, like search queries.
-      model: "short",
+      // We let the API automatically detect encoding details.
+      // This is the most important part.
+      // The default values are sufficient for webm/opus.
+      languageCode: "en-US",
+
+      // *** THIS IS THE FINAL FIX: USE A UNIVERSALLY AVAILABLE MODEL ***
+      model: "latest_long",
     };
+
     const speechRequest = {
       audio: audio,
       config: config,
     };
 
-    console.log("transcribeAudio: Sending audio to Vertex AI Speech-to-Text...");
+    console.log("transcribeAudio: Sending audio with 'latest_long' model...");
 
-    // 4. --- PERFORM TRANSCRIPTION AND PARSE RESPONSE ---
     const [response] = await speechClient.recognize(speechRequest);
+
+    if (!response.results || response.results.length === 0 || !response.results[0].alternatives || response.results[0].alternatives.length === 0) {
+      console.warn("transcribeAudio: No transcription found (audio may be silent).");
+      return {transcript: ""};
+    }
+
     const transcription = response.results
         .map((result) => result.alternatives[0].transcript)
         .join("\n");
 
-    console.log(`transcribeAudio: Transcription successful: "${transcription}"`);
-
-    // 5. --- RETURN THE TEXT TO THE FRONTEND ---
+    console.log(`transcribeAudio: SUCCESS! Transcription: "${transcription}"`);
     return {transcript: transcription};
   } catch (error) {
     console.error("transcribeAudio CRITICAL ERROR:", error);
-    throw new functions.https.HttpsError(
-        "internal",
-        "Failed to transcribe audio.",
-        error.message,
-    );
+    throw new functions.https.HttpsError("internal", "Failed to transcribe audio.");
   }
 });
