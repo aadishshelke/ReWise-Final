@@ -1,7 +1,7 @@
 // frontend/src/components/Sidebar.jsx
 
 import { useState } from "react";
-import { Menu, Home, Book, Users, Award, Feather, FileText, Bot, PenSquare, LogOut, UploadCloud, BrainCircuit } from "lucide-react";
+import { Menu, Home, Book, Users, Award, Feather, FileText, Bot, PenSquare, LogOut, UploadCloud, BrainCircuit, UserCheck } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase"; // Ensure your firebase config path is correct
@@ -21,6 +21,7 @@ const aiToolLinks = [
   { icon: <Bot size={20} />, label: "Concept Explainer", to: "/dashboard/concept" },
   { icon: <PenSquare size={20} />, label: "Chalkboard View", to: "/dashboard/chalkboard" },
   { icon: <UploadCloud size={20} />, label: "Syllabus Architect", to: "/dashboard/syllabus-upload" },
+  { icon: <UserCheck size={20} />, label: "Attendance Tracker", to: "/dashboard/attendance" },
 ];
 
 export function Sidebar() {
@@ -94,7 +95,7 @@ export function Sidebar() {
           onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
           className="w-full flex items-center gap-2 hover:bg-primary/90 dark:hover:bg-gray-800 p-2 rounded-lg"
         >
-          <img src="/balbuddy.png" alt="BalBuddy" className="w-8 h-8 rounded-full" />
+          <img src="/rewise.jpeg" alt="ReWise AI Agent" className="w-8 h-8 rounded-full object-cover border border-primary/20" />
           {isOpen && (
             <div className="flex-1 text-left">
               <span className="text-sm font-semibold">SuperTeacher</span>

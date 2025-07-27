@@ -22,7 +22,7 @@ function TailwindCheckbox({ checked, onChange }) {
   return (
     <button
       type="button"
-      className={`w-5 h-5 border rounded flex items-center justify-center transition focus:outline-none ${checked ? 'bg-primary border-primary' : 'bg-white border-gray-300'}`}
+      className={`w-5 h-5 border rounded flex items-center justify-center transition focus:outline-none ${checked ? 'bg-primary border-primary' : 'bg-surface-sunken border-border-subtle'}`}
       onClick={() => onChange(!checked)}
       aria-checked={checked}
       role="checkbox"
@@ -69,24 +69,29 @@ export default function TeacherProfileSetup() {
   const selectedGrades = watch("grades");
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-softbg dark:bg-gray-950 py-8">
+    <div className="min-h-screen flex items-center justify-center bg-background py-8">
       <motion.div
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7 }}
         className="w-full max-w-lg"
       >
-        <div className="rounded-2xl shadow-soft p-6 bg-white dark:bg-gray-900">
+        <div className="rounded-2xl shadow-2xl shadow-black/30 p-8 bg-surface border border-border-subtle">
           <div className="mb-4 text-primary font-semibold text-sm">Step 1 of 3 — Teacher Profile Setup</div>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {/* Name */}
             <div>
-              <label className="block font-medium mb-1">Name *</label>
+              <label className="block font-medium mb-1 text-text-secondary">Name *</label>
               <Controller
                 name="name"
                 control={control}
                 render={({ field }) => (
-                  <input {...field} placeholder="Your Name" className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" />
+                  <input 
+                    {...field} 
+                    placeholder="Your Name" 
+                    style={{ backgroundColor: '#1F2937', color: '#E5E7EB' }}
+                    className="w-full border border-gray-700 rounded-lg px-3 py-2 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary" 
+                  />
                 )}
               />
               <AnimatePresence>
@@ -99,12 +104,17 @@ export default function TeacherProfileSetup() {
             </div>
             {/* School */}
             <div>
-              <label className="block font-medium mb-1">School Name *</label>
+              <label className="block font-medium mb-1 text-text-secondary">School Name *</label>
               <Controller
                 name="school"
                 control={control}
                 render={({ field }) => (
-                  <input {...field} placeholder="School Name" className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" />
+                  <input 
+                    {...field} 
+                    placeholder="School Name" 
+                    style={{ backgroundColor: '#1F2937', color: '#E5E7EB' }}
+                    className="w-full border border-gray-700 rounded-lg px-3 py-2 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary" 
+                  />
                 )}
               />
               <AnimatePresence>
@@ -117,14 +127,14 @@ export default function TeacherProfileSetup() {
             </div>
             {/* Languages */}
             <div>
-              <label className="block font-medium mb-1">Preferred Languages *</label>
+              <label className="block font-medium mb-1 text-text-secondary">Preferred Languages *</label>
               <div className="flex flex-wrap gap-2 mb-1">
                 {languages.map((lang) => (
                   <button
                     type="button"
                     key={lang}
                     className={`px-3 py-1 rounded-full border text-sm font-medium transition
-                      ${selectedLanguages.includes(lang) ? "bg-primary text-white border-primary" : "bg-gray-100 border-gray-300 text-gray-700"}
+                      ${selectedLanguages.includes(lang) ? "bg-primary text-white border-primary" : "bg-surface-sunken border-border-subtle text-text-secondary"}
                     `}
                     onClick={() => {
                       setValue(
@@ -150,14 +160,14 @@ export default function TeacherProfileSetup() {
             </div>
             {/* Subjects */}
             <div>
-              <label className="block font-medium mb-1">Subjects Taught *</label>
+              <label className="block font-medium mb-1 text-text-secondary">Subjects Taught *</label>
               <div className="flex flex-wrap gap-2 mb-1">
                 {subjects.map((subj) => (
                   <button
                     type="button"
                     key={subj}
                     className={`px-3 py-1 rounded-full border text-sm font-medium transition
-                      ${selectedSubjects.includes(subj) ? "bg-accent text-white border-accent" : "bg-gray-100 border-gray-300 text-gray-700"}
+                      ${selectedSubjects.includes(subj) ? "bg-accent text-white border-accent" : "bg-surface-sunken border-border-subtle text-text-secondary"}
                     `}
                     onClick={() => {
                       setValue(
@@ -183,7 +193,7 @@ export default function TeacherProfileSetup() {
             </div>
             {/* Grades */}
             <div>
-              <label className="block font-medium mb-1">Grades Handled *</label>
+              <label className="block font-medium mb-1 text-text-secondary">Grades Handled *</label>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-1">
                 {grades.map((grade) => (
                   <label key={grade} className="flex items-center gap-2 cursor-pointer">
@@ -205,7 +215,7 @@ export default function TeacherProfileSetup() {
                         />
                       )}
                     />
-                    <span className="text-sm">{grade}</span>
+                    <span className="text-sm text-text-secondary">{grade}</span>
                   </label>
                 ))}
               </div>
@@ -219,12 +229,17 @@ export default function TeacherProfileSetup() {
             </div>
             {/* Schedule */}
             <div>
-              <label className="block font-medium mb-1">Teaching Schedule (optional)</label>
+              <label className="block font-medium mb-1 text-text-secondary">Teaching Schedule (optional)</label>
               <Controller
                 name="schedule"
                 control={control}
                 render={({ field }) => (
-                  <input {...field} placeholder="e.g. Mon-Fri, 9am-2pm" className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" />
+                  <input 
+                    {...field} 
+                    placeholder="e.g. Mon-Fri, 9am-2pm" 
+                    style={{ backgroundColor: '#1F2937', color: '#E5E7EB' }}
+                    className="w-full border border-gray-700 rounded-lg px-3 py-2 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary" 
+                  />
                 )}
               />
             </div>
@@ -232,7 +247,7 @@ export default function TeacherProfileSetup() {
             <div className="pt-2">
               <button
                 type="submit"
-                className="w-full bg-accent text-white font-semibold py-2 rounded-lg text-lg hover:bg-accent/90 transition"
+                className="w-full bg-accent text-white font-semibold py-2 rounded-lg text-lg hover:bg-accent/90 transition disabled:bg-gray-600 disabled:cursor-not-allowed"
                 disabled={!isValid || loading}
               >
                 {loading ? "Saving..." : "Save & Continue"}

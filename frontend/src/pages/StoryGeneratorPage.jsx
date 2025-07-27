@@ -5,44 +5,45 @@ import { useOutletContext } from 'react-router-dom';
 import { functions, db } from '../firebase';
 import { httpsCallable } from 'firebase/functions';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { motion } from 'framer-motion';
+import { ChevronDown, Loader } from 'lucide-react';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const generateTextFn = httpsCallable(functions, 'generateTextContent');
 
-// A dedicated component to render a single story from the history
+// --- COMPONENT 1: Renders a single story from history ---
 const StoryHistoryCard = ({ doc }) => {
   const [isOpen, setIsOpen] = useState(false);
   const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleString() : 'N/A';
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-soft mb-4">
+    <div className="bg-surface border border-border-subtle rounded-xl shadow-lg mb-6 overflow-hidden">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex justify-between items-center p-4 text-left"
+        className="w-full flex justify-between items-center p-5 text-left transition-colors hover:bg-surface/80"
       >
         <div>
-          <h3 className="font-bold text-md text-gray-800 truncate">
+          <h3 className="font-bold text-lg text-text-main">
             Story based on: "{doc.userPrompt}"
           </h3>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-text-secondary mt-1">
             Generated on: {formatDate(doc.createdAt)}
           </p>
         </div>
-        <span className={`transform transition-transform text-gray-500 ${isOpen ? 'rotate-180' : ''}`}>
-          ▼
-        </span>
+        <ChevronDown className={`w-6 h-6 text-text-secondary transform transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {isOpen && (
-        <div className="p-4 md:p-6 border-t border-gray-100">
-          <pre className="whitespace-pre-wrap font-poppins text-gray-700">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 md:p-6 border-t border-border-subtle">
+          <div className="whitespace-pre-wrap font-poppins text-text-secondary leading-relaxed">
             {doc.generatedContent}
-          </pre>
-        </div>
+          </div>
+        </motion.div>
       )}
     </div>
   );
 };
 
+// --- COMPONENT 2: The main page ---
 const StoryGeneratorPage = () => {
   const { user } = useOutletContext();
   const [prompt, setPrompt] = useState('');
@@ -51,15 +52,9 @@ const StoryGeneratorPage = () => {
   const [historyDocs, setHistoryDocs] = useState([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(true);
 
-  // Real-time listener for the 'stories' collection
   useEffect(() => {
     if (!user?.uid) return setIsHistoryLoading(false);
-    
-    const q = query(
-      collection(db, "stories"), // Listen to the 'stories' collection
-      where("teacherId", "==", user.uid),
-      orderBy("createdAt", "desc")
-    );
+    const q = query(collection(db, "stories"), where("teacherId", "==", user.uid), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setHistoryDocs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setIsHistoryLoading(false);
@@ -76,16 +71,11 @@ const StoryGeneratorPage = () => {
     setError('');
     try {
       const fullPrompt = `You are an AI assistant for teachers in rural India. Create a simple, culturally relevant story for children (Grades 2-4) in English based on this idea: "${prompt}". The story should be engaging and easy to understand.`;
-      
-      // Call the backend function and tell it to save the result
       await generateTextFn({
-        userPrompt: prompt, // The original prompt
-        fullPrompt: fullPrompt, // The detailed prompt for the AI
-        saveOptions: {
-          collection: 'stories' // The collection to save to
-        }
+        userPrompt: prompt,
+        fullPrompt: fullPrompt,
+        saveOptions: { collection: 'stories' }
       });
-      // Clear the input after successful generation
       setPrompt('');
     } catch (err) {
       setError("Sorry, an error occurred while generating the story.");
@@ -95,31 +85,37 @@ const StoryGeneratorPage = () => {
   };
 
   return (
-    <div className="space-y-8">
-      {/* Generator Section */}
-      <div className="p-4 border rounded-lg bg-gray-50 space-y-4 text-left">
-        <h2 className="text-xl font-semibold text-gray-800">Hyperlocal Story Generator</h2>
-        <p className="text-sm text-gray-600">Generate stories in local dialects and contexts (e.g., Hindi, Marathi).</p>
+    <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-12">
+      {/* Section 1: The Generator */}
+      <div className="bg-surface p-6 rounded-xl border border-border-subtle shadow-2xl shadow-black/20">
+        <h2 className="text-2xl font-bold text-text-main">Hyperlocal Story Generator</h2>
+        <p className="text-text-secondary mt-2 mb-6">Generate stories in local dialects and contexts (e.g., Hindi, Marathi).</p>
+        {/* THIS IS THE CORRECTED TEXTAREA */}
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="E.g., A brave mouse who wanted to touch the moon"
-          className="w-full p-2 border rounded"
-          rows="3"
+          className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-gray-200 placeholder:text-gray-500 focus:ring-2 focus:ring-primary focus:outline-none transition-all duration-200"
+          rows="4"
         ></textarea>
-        <button onClick={handleGenerate} disabled={isLoading || !prompt} className="bg-primary text-white px-4 py-2 rounded hover:bg-primary/90 disabled:bg-gray-400">
+        <button
+          onClick={handleGenerate}
+          disabled={isLoading || !prompt}
+          className="w-full mt-6 bg-primary text-white font-bold px-4 py-3 rounded-lg hover:bg-primary/90 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {isLoading && <Loader className="animate-spin" />}
           {isLoading ? "Writing..." : "Generate Story"}
         </button>
-        {error && <p className="text-red-500 mt-2">{error}</p>}
+        {error && <p className="text-red-500 font-semibold mt-4 text-center">{error}</p>}
       </div>
 
-      {/* History Section */}
-      <div className="mt-6 text-left">
-        <h3 className="text-xl font-semibold mb-4 text-gray-800">Your Generated Stories</h3>
-        {isHistoryLoading && <LoadingSpinner message="Loading story history..." />}
+      {/* Section 2: The History */}
+      <div className="mt-10">
+        <h3 className="text-2xl font-bold mb-6 text-text-main">Your Generated Stories</h3>
+        {isHistoryLoading && <div className="flex justify-center"><LoadingSpinner message="Loading story history..." /></div>}
         {!isHistoryLoading && historyDocs.length === 0 && (
-          <div className="text-center py-10 px-4 bg-white rounded-lg border">
-            <p className="text-gray-500">No stories generated yet. Write your first one!</p>
+          <div className="text-center py-16 px-4 bg-surface rounded-lg border-2 border-dashed border-border-subtle">
+            <p className="text-text-secondary">No stories generated yet. Write your first one!</p>
           </div>
         )}
         {!isHistoryLoading && historyDocs.map(doc => <StoryHistoryCard key={doc.id} doc={doc} />)}
