@@ -19,6 +19,7 @@ import ConceptExplainerPage from "./pages/ConceptExplainerPage";
 import ChalkboardViewPage from "./pages/ChalkboardViewPage";
 import SyllabusUploader from "./pages/SyllabusUploader";
 import SahayakAgentPage from "./pages/SahayakAgentPage";
+import AttendanceTrackerPage from "./pages/AttendanceTrackerPage";
 
 // Import our new auth components
 import AuthProvider from "./context/AuthContext";
@@ -109,6 +110,7 @@ function App() {
             <Route path="dashboard/concept" element={<ConceptExplainerPage />} />
             <Route path="dashboard/chalkboard" element={<ChalkboardViewPage />} />
             <Route path="dashboard/syllabus-upload" element={<SyllabusUploader />} />
+            <Route path="dashboard/attendance" element={<AttendanceTrackerPage />} />
             <Route path="dashboard/agent" element={<SahayakAgentPage />} />
           </Route>
           {/* ------------------------------------------- */}
