@@ -15,7 +15,7 @@ const mainLinks = [
 ];
 
 const aiToolLinks = [
-  { icon: <BrainCircuit size={20} />, label: "Sahayak Agent", to: "/dashboard/agent" },
+  { icon: <BrainCircuit size={20} />, label: "ReWise Agent", to: "/dashboard/agent" },
   { icon: <FileText size={20} />, label: "Worksheets", to: "/dashboard/worksheets" },
   { icon: <Feather size={20} />, label: "Story Generator", to: "/dashboard/story" },
   { icon: <Bot size={20} />, label: "Concept Explainer", to: "/dashboard/concept" },
@@ -64,7 +64,7 @@ export function Sidebar() {
       </button>
 
       <nav className="mt-4 flex-1 overflow-y-auto">
-        {mainLinks.map((link) => <NavLink key={link.label} link={link} />)}
+        {/* {mainLinks.map((link) => <NavLink key={link.label} link={link} />)} */}
         
         <div className="my-4 px-4">
           <hr className={`border-t border-white/20 ${isOpen ? '' : 'hidden'}`} />

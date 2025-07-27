@@ -1,6 +1,6 @@
 // frontend/src/App.jsx
 import React, { createContext,useState } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 // Import Layouts
 import { DashboardLayout } from "./layouts/DashboardLayout";
@@ -104,10 +104,10 @@ function App() {
             element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}
           >
             {/* All pages inside here will share the DashboardLayout */}
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="lessons" element={<Lessons />} />
-            <Route path="students" element={<Students />} />
-            <Route path="achievements" element={<Achievements />} />
+            {/* <Route path="dashboard" element={<Dashboard />} /> */}
+            {/* <Route path="lessons" element={<Lessons />} /> */}
+            {/* <Route path="students" element={<Students />} /> */}
+            {/* <Route path="achievements" element={<Achievements />} /> */}
             <Route path="dashboard/worksheets" element={<WorksheetGeneratorPage />} />
             <Route path="dashboard/story" element={<StoryGeneratorPage />} />
             <Route path="dashboard/concept" element={<ConceptExplainerPage />} />
@@ -118,7 +118,7 @@ function App() {
           {/* ------------------------------------------- */}
 
           {/* Fallback route */}
-          <Route path="*" element={<Welcome />} />
+          <Route path="*" element={<Navigate to='/dashboard/agent' replace />} />
         </Routes>
       </ThemeProvider>
     </AuthProvider>

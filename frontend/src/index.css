@@ -14,5 +14,5 @@
 }
 
 body {
-  @apply bg-softbg font-poppins text-gray-800;
+  @apply bg-background font-poppins text-gray-800;
 }

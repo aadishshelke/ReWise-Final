@@ -8,23 +8,24 @@ const {initializeApp} = require("firebase-admin/app");
 const {getFirestore} = require("firebase-admin/firestore");
 const {getStorage} = require("firebase-admin/storage");
 const {
-  GoogleGenerativeAI,
+  // GoogleGenerativeAI,
   HarmCategory,
   HarmBlockThreshold,
 } = require("@google/generative-ai");
 const {VertexAI} = require("@google-cloud/vertexai");
 const admin = require("firebase-admin");
+const speech = require("@google-cloud/speech");
 
 initializeApp();
 
 const DEPLOY_REGION = "us-east1";
 // const IMAGE_DEPLOY_REGION = "us-central1";
-const MODEL_NAME = "gemini-1.5-flash-latest";
-const IMAGE_MODEL_NAME = "imagen-3.0-fast-generate-001"; // Stable Imagen model
-const PRO_MODEL_NAME = "gemini-1.5-pro-latest"; // For complex reasoning
+const MODEL_NAME = "gemini-2.0-flash-001";
+const IMAGE_MODEL_NAME = "imagen-3.0-generate-002"; // Stable Imagen model
+// const PRO_MODEL_NAME = "gemini-1.5-pro-latest"; // For complex reasoning
 
 // We will initialize the client inside the function handlers.
-let genAI;
+// let genAI;
 let vertexAI;
 
 // /**
@@ -108,7 +109,7 @@ exports.generateDailyBriefings = onSchedule({
   if (!vertexAI) {
     vertexAI = new VertexAI({project: process.env.GCLOUD_PROJECT, location: DEPLOY_REGION});
   }
-  const model = vertexAI.getGenerativeModel({model: PRO_MODEL_NAME});
+  const model = vertexAI.getGenerativeModel({model: MODEL_NAME});
   const db = getFirestore();
 
   const usersSnapshot = await db.collection("users").get();
@@ -186,11 +187,15 @@ exports.generateDailyBriefings = onSchedule({
   return null;
 });
 
+// This is the definitive, converted version of your generateTextContent function.
+// It now uses the Vertex AI platform, which is more robust and secure.
+
 exports.generateTextContent = onCall({
   region: DEPLOY_REGION,
-  secrets: ["GEMINI_API_KEY"],
+  // NOTE: The 'secrets' array is removed as Vertex AI uses the function's
+  // own service account identity for authentication, not an API key.
 }, async (request) => {
-  // Check for authentication first
+  // 1. --- ROBUST VALIDATION --- (Unchanged)
   if (!request.auth) {
     throw new functions.https.HttpsError(
         "unauthenticated", "You must be logged in to use this feature.",
@@ -205,18 +210,37 @@ exports.generateTextContent = onCall({
   }
 
   try {
-    // Lazily initialize the client inside the handler
-    if (!genAI) {
-      genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    // 2. --- VERTEX AI INITIALIZATION ---
+    // Lazily initialize the Vertex AI client. This is efficient.
+    if (!vertexAI) {
+      vertexAI = new VertexAI({
+        project: process.env.GCLOUD_PROJECT,
+        location: DEPLOY_REGION,
+      });
     }
-    const textModel = genAI.getGenerativeModel({model: MODEL_NAME});
 
-    // Directly call the Gemini API
-    const result = await textModel.generateContent(fullPrompt);
-    const response = await result.response;
-    const responseText = response.text();
+    // Get the generative model from the Vertex AI client.
+    const textModel = vertexAI.getGenerativeModel({model: MODEL_NAME});
 
-    // Directly save to Firestore if requested
+    console.log("generateTextContent (VertexAI): Calling model with prompt.");
+
+    // 3. --- VERTEX AI API CALL ---
+    // The request format for Vertex AI requires a specific structure.
+    const result = await textModel.generateContent({
+      contents: [{role: "user", parts: [{text: fullPrompt}]}],
+    });
+
+    // 4. --- VERTEX AI RESPONSE PARSING ---
+    // The response structure is different from the Gemini API.
+    // We defensively check for the expected structure.
+    if (!result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.error("generateTextContent: Unexpected response from Vertex AI", result.response);
+      throw new Error("Failed to parse a valid response from the AI model.");
+    }
+    const responseText = result.response.candidates[0].content.parts[0].text;
+
+    // 5. --- DATABASE WRITE --- (Unchanged)
+    // Directly save to Firestore if requested.
     if (saveOptions && saveOptions.collection) {
       const db = getFirestore();
       await db.collection(saveOptions.collection).add({
@@ -225,30 +249,43 @@ exports.generateTextContent = onCall({
         generatedContent: responseText,
         createdAt: new Date(),
       });
+      console.log(`generateTextContent (VertexAI): Saved content to '${saveOptions.collection}'.`);
     }
 
-    // Return the generated content to the frontend
+    // 6. --- RETURN TO FRONTEND --- (Unchanged)
+    // Return the generated content to the frontend.
     return {content: responseText};
   } catch (error) {
-    console.error("generateTextContent CRITICAL ERROR:", error);
+    // 7. --- ROBUST ERROR HANDLING ---
+    console.error("generateTextContent (VertexAI) CRITICAL ERROR:", error);
+    // This will catch both function errors and Vertex AI API errors.
     throw new functions.https.HttpsError(
-        "internal", "Error generating content.",
+        "internal",
+        "An error occurred while generating content.",
+        error.message, // Pass the error message for better debugging if needed.
     );
   }
 });
+
 exports.generateDifferentiatedWorksheets = onObjectFinalized(
     {
-      region: DEPLOY_REGION,
+      region: DEPLOY_REGION, // Uses your "us-east1" setting
       timeoutSeconds: 300,
       memory: "1GiB",
-      secrets: ["GEMINI_API_KEY"],
+    // NOTE: The 'secrets' array is removed. Vertex AI uses the function's
+    // service account identity for authentication.
     },
     async (event) => {
-      if (!genAI) {
-        genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    // 1. --- VERTEX AI INITIALIZATION ---
+      if (!vertexAI) {
+        vertexAI = new VertexAI({
+          project: process.env.GCLOUD_PROJECT,
+          location: DEPLOY_REGION, // Stays as us-east1
+        });
       }
-      const multimodalModel = genAI.getGenerativeModel({model: MODEL_NAME});
-
+      const multimodalModel = vertexAI.getGenerativeModel({
+        model: MODEL_NAME,
+      });
       const {bucket: fileBucket, name: filePath, contentType} = event.data;
       console.log(`Worksheet Function triggered. File: ${filePath}`);
 
@@ -358,15 +395,19 @@ which is an array of three worksheet objects. Follow this schema precisely:
 `;
         // --- END OF NEW PROMPT ---
 
-        console.log(`Calling Google AI SDK with model: ${MODEL_NAME}`);
-        const result = await multimodalModel.generateContent(
-            [prompt, imagePart],
-        );
-        const response = await result.response;
-        const responseText = response.text();
+        console.log(`Calling Vertex AI with model: ${MODEL_NAME}`);
+        const result = await multimodalModel.generateContent({
+          contents: [{role: "user", parts: [{text: prompt}, imagePart]}],
+        });
+
+        // 6. --- VERTEX AI RESPONSE PARSING ---
+        if (!result.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+          console.error("generateDifferentiatedWorksheets: Unexpected response from Vertex AI", result.response);
+          throw new Error("Failed to parse a valid response from the AI model.");
+        }
+        const responseText = result.response.candidates[0].content.parts[0].text;
 
         console.log("Received response, parsing JSON...");
-
         const jsonRegex = /^```json\s*|```\s*$/g;
         const cleanJsonString = responseText.replace(jsonRegex, "");
         const generatedWorksheets = JSON.parse(cleanJsonString);
@@ -482,7 +523,13 @@ exports.generateChalkboardAid = onCall({
       createdAt: new Date(),
     });
 
-    console.log("generateChalkboardAid: Chalkboard aid saved to Firestore.");
+    await db.collection("userActivityLog").add({
+      teacherId: request.auth.uid,
+      activityType: "createChalkboardAid",
+      topic: prompt, // The user's original prompt is the topic
+      createdAt: new Date(),
+    });
+    console.log("Chalkboard aid saved to Firestore.");
     return {imageUrl: publicUrl};
   } catch (error) {
     // 6. Comprehensive Error Handling
@@ -513,12 +560,10 @@ exports.generateChalkboardAid = onCall({
 // functions/index.js (replace the existing processSyllabusText function with this)
 
 exports.processSyllabusText = onCall({
-  // --- CHANGE 1: MATCHING THE WORKING PATTERN ---
-  region: DEPLOY_REGION,
-  secrets: ["GEMINI_API_KEY"], // Added to use the same auth as other functions
+  region: DEPLOY_REGION, // Uses your "us-east1" setting
+  // NOTE: The 'secrets' array is removed. Vertex AI authenticates automatically.
   timeoutSeconds: 540,
   memory: "2GiB",
-  // ------------------------------------------
 }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
@@ -529,11 +574,13 @@ exports.processSyllabusText = onCall({
   }
 
   try {
-    // --- CHANGE 2: USE THE SAME CLIENT AND MODEL ---
-    if (!genAI) {
-      genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    if (!vertexAI) {
+      vertexAI = new VertexAI({
+        project: process.env.GCLOUD_PROJECT,
+        location: DEPLOY_REGION, // Stays as us-east1
+      });
     }
-    const model = genAI.getGenerativeModel({model: MODEL_NAME}); // Using MODEL_NAME
+    const model = vertexAI.getGenerativeModel({model: MODEL_NAME}); // Using MODEL_NAME
     // ----------------------------------------------
 
     const teacherId = request.auth.uid;
@@ -549,11 +596,19 @@ exports.processSyllabusText = onCall({
 
     console.log("Calling Google AI SDK to architect the yearly plan...");
 
-    // --- CHANGE 3: MATCHING THE API CALL STYLE ---
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const responseText = response.text();
-    // -------------------------------------------
+    console.log(`Calling Vertex AI with model '${MODEL_NAME}' to architect the yearly plan...`);
+
+    // 4. --- VERTEX AI API CALL ---
+    const result = await model.generateContent({
+      contents: [{role: "user", parts: [{text: prompt}]}],
+    });
+
+    // 5. --- VERTEX AI RESPONSE PARSING ---
+    if (!result.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.error("processSyllabusText: Unexpected response from Vertex AI", result.response);
+      throw new Error("Failed to parse a valid response from the AI model.");
+    }
+    const responseText = result.response.candidates[0].content.parts[0].text;
 
     let syllabusArray;
     try {
@@ -590,14 +645,27 @@ exports.processSyllabusText = onCall({
 
 // functions/index.js (Replacement for agentOrchestrator)
 
+// This is the definitive, corrected version of your agentOrchestrator function.
+// It fixes the typo and is refactored for better readability and reliability.
+
+// This is the definitive, corrected version of your agentOrchestrator function.
+// It adds the missing memory logging for worksheet requests.
+
 exports.agentOrchestrator = onCall({
   region: DEPLOY_REGION,
-  secrets: ["GEMINI_API_KEY"],
+  // NOTE: The 'secrets' array is removed. Vertex AI uses the function's
+  // service account identity, which is more secure and robust.
   timeoutSeconds: 300,
 }, async (request) => {
-  if (!genAI) {
-    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  // 1. --- VERTEX AI INITIALIZATION ---
+  // Initialize the Vertex AI client, consistent with your other functions.
+  if (!vertexAI) {
+    vertexAI = new VertexAI({
+      project: process.env.GCLOUD_PROJECT,
+      location: DEPLOY_REGION,
+    });
   }
+  // 1. --- ROBUST VALIDATION ---
   if (!request.auth) {
     throw new functions.https.HttpsError(
         "unauthenticated", "Auth is required.",
@@ -610,47 +678,42 @@ exports.agentOrchestrator = onCall({
     );
   }
 
+  // Initialize Firestore once at the top for efficiency
+  const db = getFirestore();
+
+  // 2. --- TOOL DEFINITIONS ---
   const tools = [
     {
       functionDeclarations: [
         {
           name: "generateStory",
-          description: "Generates a simple, culturally relevant story to make a topic more engaging for young children (Grades 2-5). Use this to introduce a new concept in a fun, narrative way.",
+          description: "Generates a simple, culturally relevant story to make a topic more engaging for young children (Grades 2-5).",
           parameters: {
             type: "OBJECT",
             properties: {
-              topic: {
-                type: "STRING",
-                description: "The core educational theme the story should be about, e.g., 'the importance of washing hands' or 'the water cycle'.",
-              },
+              topic: {type: "STRING", description: "The core educational theme the story should be about."},
             },
             required: ["topic"],
           },
         },
         {
           name: "explainConcept",
-          description: "Breaks down a single, complex concept into a simple explanation with a relatable analogy for students. Use this to clarify a specific point or answer a potential student question like 'what is...?' or 'why...?'",
+          description: "Breaks down a single, complex concept into a simple explanation with a relatable analogy for students.",
           parameters: {
             type: "OBJECT",
             properties: {
-              concept: {
-                type: "STRING",
-                description: "The specific concept or question to explain, e.g., 'gravity' or 'why the sky is blue'.",
-              },
+              concept: {type: "STRING", description: "The specific concept or question to explain."},
             },
             required: ["concept"],
           },
         },
         {
           name: "requestWorksheetImage",
-          description: "Should be used when the teacher mentions needing a 'worksheet', 'quiz', 'test', 'exam', or 'assessment' for a specific topic. This tool's purpose is to ask the user to upload an image of the relevant textbook page.",
+          description: "Used when the teacher mentions needing a 'worksheet', 'quiz', 'test', or 'assessment'. This tool asks the user to upload an image.",
           parameters: {
             type: "OBJECT",
             properties: {
-              topic: {
-                type: "STRING",
-                description: "The topic the worksheet should be about. This will be used in the follow-up prompt to the user.",
-              },
+              topic: {type: "STRING", description: "The topic the worksheet should be about."},
             },
             required: ["topic"],
           },
@@ -659,119 +722,82 @@ exports.agentOrchestrator = onCall({
     },
   ];
 
-  const agentModel = genAI.getGenerativeModel({
+  // 3. --- MODEL CONFIGURATION ---
+  const agentModel = vertexAI.getGenerativeModel({
     model: MODEL_NAME,
     tools,
     safetySettings: [
-      {
-        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
+      {category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE},
+      {category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE},
+      {category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE},
+      {category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE},
     ],
   });
 
-  const fullAgentPrompt = `You are Sahayak, an expert, proactive AI teaching companion for educators in under-resourced, multi-grade classrooms in rural India. Your primary goal is to anticipate the teacher's needs and provide comprehensive support.
-
-Teacher's Request: "${userPrompt}"
-
-Your Reasoning Process:
-1.  Identify the Core Topic.
-2.  Infer Unstated Needs: What materials would be most helpful? Does the topic need a story, an explanation, or a worksheet?
-3.  Select ALL Relevant Tools: Based on your inferences, select all tools that will help. You can and should call multiple tools in parallel.
-4.  No Suitable Tools?: If no tools fit, provide a direct, helpful text response.
-
-Now, determine the appropriate tool calls.`;
+  const fullAgentPrompt = `You are Sahayak, an expert, proactive AI teaching companion. Your primary goal is to anticipate the teacher's needs and provide comprehensive support. Teacher's Request: "${userPrompt}". Determine the appropriate tool calls.`;
 
   try {
-    console.log("Sahayak Agent: Sending prompt to model...");
-    const result = await agentModel.generateContent(fullAgentPrompt);
-    const response = result.response;
-    const calls = response.functionCalls();
+    console.log("agentOrchestrator (VertexAI): Sending prompt to model...");
+    // 5. --- VERTEX AI API CALL (MAIN) ---
+    const result = await agentModel.generateContent({
+      contents: [{role: "user", parts: [{text: fullAgentPrompt}]}],
+    });
 
-    if (!calls || calls.length === 0) {
-      console.log("Sahayak Agent: No tool call needed. Responding with text.");
-      return {
-        type: "text",
-        content: response.text(),
-      };
+    // 6. --- VERTEX AI RESPONSE PARSING (MAIN) ---
+    const response = result.response;
+    if (!response.candidates?.[0]?.content?.parts) {
+      throw new Error("Invalid response structure from Vertex AI agent model.");
+    }
+    const agentParts = response.candidates[0].content.parts;
+    const calls = agentParts.filter((p) => p.functionCall).map((p) => p.functionCall);
+    const textResponse = agentParts.filter((p) => p.text).map((p) => p.text).join("\n");
+
+    if (calls.length === 0) {
+      console.log("agentOrchestrator (VertexAI): No tool call needed.");
+      return {type: "text", content: textResponse};
     }
 
-    console.log(`Sahayak Agent: Model wants to call ${calls.length} tool(s).`);
+    console.log(`agentOrchestrator (VertexAI): Model wants to call ${calls.length} tool(s).`);
 
-    const toolExecutionPromises = calls.map((call) => {
-      console.log(`- Preparing tool: ${call.name}`);
-      const modelForTool = genAI.getGenerativeModel({model: MODEL_NAME});
+    // 7. --- VERTEX AI TOOL EXECUTION LOGIC ---
+    const toolExecutionPromises = calls.map(async (call) => {
+      console.log(`- Executing tool: ${call.name}`);
+      const modelForTool = vertexAI.getGenerativeModel({model: MODEL_NAME});
 
       if (call.name === "generateStory") {
         const storyTopic = call.args.topic;
-        const fullPrompt = `Create a story about: "${storyTopic}".`;
-        return modelForTool.generateContent(fullPrompt).then(async (toolResult) => {
-          const content = (await toolResult.response).text();
-          const db = getFirestore();
-          // Save the story as before
-          await db.collection("stories").add({
-            teacherId: request.auth.uid,
-            userPrompt: storyTopic,
-            generatedContent: content,
-            createdAt: new Date(),
-          });
-          // *** NEW: WRITE TO THE MEMORY LOG ***
-          await db.collection("userActivityLog").add({
-            teacherId: request.auth.uid,
-            activityType: "generateStory",
-            topic: storyTopic,
-            createdAt: new Date(),
-          });
-          return {type: "summary", summary: `Story about "${storyTopic}"`};
-        });
+        const toolResult = await modelForTool.generateContent({contents: [{role: "user", parts: [{text: `Create a story about: "${storyTopic}".`}]}]});
+        const content = toolResult.response.candidates[0].content.parts[0].text;
+
+        await db.collection("stories").add({teacherId: request.auth.uid, userPrompt: storyTopic, generatedContent: content, createdAt: new Date()});
+        await db.collection("userActivityLog").add({teacherId: request.auth.uid, activityType: "generateStory", topic: storyTopic, createdAt: new Date()});
+        return {type: "summary", summary: `Story about "${storyTopic}"`};
       }
 
       if (call.name === "explainConcept") {
         const concept = call.args.concept;
-        const fullPrompt = `Explain simply: "${concept}".`;
-        return modelForTool.generateContent(fullPrompt).then(async (toolResult) => {
-          const content = (await toolResult.response).text();
-          const db = getFirestore();
-          // Save the concept as before
-          await db.collection("concepts").add({
-            teacherId: request.auth.uid,
-            userPrompt: concept,
-            generatedContent: content,
-            createdAt: new Date(),
-          });
-          // *** NEW: WRITE TO THE MEMORY LOG ***
-          await db.collection("userActivityLog").add({
-            teacherId: request.auth.uid,
-            activityType: "explainConcept",
-            topic: concept,
-            createdAt: new Date(),
-          });
-          return {type: "summary", summary: `Explanation for "${concept}"`};
-        });
+        const toolResult = await modelForTool.generateContent({contents: [{role: "user", parts: [{text: `Explain simply: "${concept}".`}]}]});
+        const content = toolResult.response.candidates[0].content.parts[0].text;
+
+        await db.collection("concepts").add({teacherId: request.auth.uid, userPrompt: concept, generatedContent: content, createdAt: new Date()});
+        await db.collection("userActivityLog").add({teacherId: request.auth.uid, activityType: "explainConcept", topic: concept, createdAt: new Date()});
+        return {type: "summary", summary: `Explanation for "${concept}"`};
       }
 
       if (call.name === "requestWorksheetImage") {
-        return Promise.resolve({
-          type: "ui_prompt",
-          tool: "requestWorksheetImage",
-          topic: call.args.topic,
-        });
+        const worksheetTopic = call.args.topic;
+
+        // *** THIS IS THE DEFINITIVE FIX ***
+        // A request for a worksheet is a memory worth logging. This was the missing piece.
+        console.log(`Logging worksheet request for topic: ${worksheetTopic}`);
+        await db.collection("userActivityLog").add({teacherId: request.auth.uid, activityType: "requestWorksheet", topic: worksheetTopic, createdAt: new Date()});
+        return {type: "ui_prompt", tool: "requestWorksheetImage", topic: worksheetTopic};
       }
-      return Promise.resolve(null);
+      return null;
     });
 
+
+    // 5. --- PROCESS RESULTS ---
     const toolResults = await Promise.all(toolExecutionPromises);
     const successfulTools = toolResults.filter(Boolean);
 
@@ -786,136 +812,209 @@ Now, determine the appropriate tool calls.`;
     }
 
     if (uiPromptResult) {
-      if (confirmationMessage) { // If other tasks were also done
+      if (confirmationMessage) {
         confirmationMessage += `\n\nAdditionally, I can create a worksheet on "${uiPromptResult.topic}", but I need an image of the textbook page first.`;
-      } else { // If ONLY an image was requested
+      } else {
         confirmationMessage = `Great! I can create a worksheet on "${uiPromptResult.topic}". Please upload an image of the textbook page you'd like me to use.`;
       }
     }
 
     return {
-      type: "final_response", // A consistent type for any agent action
+      type: "final_response",
       content: confirmationMessage,
-      uiPrompt: uiPromptResult || null, // Always include uiPrompt, even if it's null
+      uiPrompt: uiPromptResult || null,
     };
   } catch (error) {
-    console.error("Agent Orchestrator CRITICAL ERROR:", error);
+    // 6. --- ROBUST ERROR HANDLING ---
+    console.error("Agent Orchestrator (VertexAI) CRITICAL ERROR:", error);
     throw new functions.https.HttpsError(
-        "internal", "The agent failed to process your request.",
+        "internal",
+        "The agent failed to process your request.",
+        error.message,
     );
   }
 });
 
-// DEFINITIVE REPLACEMENT for proactiveNudgeAgent
-exports.proactiveNudgeAgent = onSchedule({
-  schedule: "every 24 hours",
-  region: DEPLOY_REGION, // Or "us-central1"
-  secrets: ["GEMINI_API_KEY"],
-  timeoutSeconds: 540,
+// THIS IS THE DEFINITIVE, UNCRASHABLE VERSION.
+// Replace your entire old generateProactiveSuggestions function with this one.
+
+exports.generateProactiveSuggestions = onCall({
+  region: DEPLOY_REGION,
+  // NOTE: The 'secrets' array is removed. Vertex AI uses the function's
+  // service account identity, which is more secure.
+  timeoutSeconds: 120,
   memory: "1GiB",
-}, async (event) => {
-  console.log("PROACTIVE AGENT: Waking up to generate contextual suggestions.");
-  if (!genAI) {
-    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+}, async (request) => {
+  const {teacherId} = request.data;
+  if (!teacherId) {
+    console.error("PROACTIVE AGENT: Function called without a teacherId.");
+    return {success: false, message: "Missing teacherId."};
   }
-  const suggestionModel = genAI.getGenerativeModel({model: PRO_MODEL_NAME});
+
+  console.log(`PROACTIVE AGENT: Waking up for teacher: ${teacherId}`);
+
+  if (!vertexAI) {
+    vertexAI = new VertexAI({
+      project: process.env.GCLOUD_PROJECT,
+      location: DEPLOY_REGION,
+    });
+  }
+  // Using the Pro model for this complex reasoning task.
+  const suggestionModel = vertexAI.getGenerativeModel({model: MODEL_NAME});
   const db = getFirestore();
 
-  const usersSnapshot = await db.collection("users").get(); // Assuming you have a 'users' collection
-  if (usersSnapshot.empty) {
-    console.log("PROACTIVE AGENT: No users found. Sleeping.");
-    return;
-  }
+  try {
+    // Step 1: Read the user's recent memory. (No change here)
+    console.log(`PROACTIVE AGENT: [1/5] Reading activity log for ${teacherId}...`);
+    const activityQuery = db.collection("userActivityLog")
+        .where("teacherId", "==", teacherId)
+        .orderBy("createdAt", "desc")
+        .limit(10);
+    const activitySnapshot = await activityQuery.get();
 
-  for (const userDoc of usersSnapshot.docs) {
-    const teacherId = userDoc.id;
-    console.log(`PROACTIVE AGENT: Analyzing memory for teacher: ${teacherId}`);
-
-    try {
-      // 1. Read the user's recent memory
-      const activityQuery = db.collection("userActivityLog")
-          .where("teacherId", "==", teacherId)
-          .orderBy("createdAt", "desc")
-          .limit(10);
-      const activitySnapshot = await activityQuery.get();
-
-      if (activitySnapshot.empty) {
-        console.log(`No activity found for teacher ${teacherId}. Skipping.`);
-        continue;
-      }
-
-      // 2. Format the memory for the AI
-      const recentActivities = activitySnapshot.docs.map((doc) => {
-        const data = doc.data();
-        return `- Created a '${data.activityType}' on the topic of '${data.topic}'.`;
-      }).join("\n");
-
-      // 3. Craft a powerful prompt to generate ACTIONABLE suggestions
-      const prompt = `
-        You are "Sahayak," an AI teaching companion. Your goal is to be proactive.
-        Based on the teacher's recent activity, generate 2-3 new, creative, and actionable teaching ideas.
-
-        **Teacher's Recent Activity (Memory):**
-        ${recentActivities}
-
-        **Your Task:**
-        Think about what topics are related or what would be a good next step. For example, if they taught a science concept, suggest a story about a famous scientist. If they told a story, suggest explaining a key concept from it.
-
-        **CRITICAL INSTRUCTIONS:**
-        - Generate a JSON array of 2-3 suggestion objects.
-        - Your entire response MUST be ONLY the valid JSON array. Do not use markdown.
-        - Each object in the array MUST follow this exact schema:
-        {
-          "suggestionText": "A user-facing string. This is the text the teacher will see. Make it engaging!",
-          "actionType": "The tool to call. Must be one of: 'generateStory', 'explainConcept'.",
-          "actionPayload": {
-            "topic": "The specific topic for the tool. This should be a new, related idea."
-          }
-        }
-
-        **Example JSON Output:**
-        [
-          {
-            "suggestionText": "Since you explained Photosynthesis, shall I tell a fun story about a talking tree who loves the sun?",
-            "actionType": "generateStory",
-            "actionPayload": {
-              "topic": "A talking tree that loves the sun and photosynthesis"
-            }
-          },
-          {
-            "suggestionText": "You recently created a worksheet on the Solar System. How about a simple explanation of 'black holes' for your older students?",
-            "actionType": "explainConcept",
-            "actionPayload": {
-              "topic": "what are black holes"
-            }
-          }
-        ]
-      `;
-
-      // 4. Generate and save the structured suggestions
-      const result = await suggestionModel.generateContent(prompt);
-      const responseText = result.response.text();
-      const cleanJsonString = responseText.replace(/^```json\s*|```\s*$/g, "").trim();
-      const suggestions = JSON.parse(cleanJsonString);
-
-      // Save to a new sub-collection for the user
-      const suggestionsRef = db.collection("users").doc(teacherId).collection("proactiveSuggestions");
-      const batch = db.batch();
-
-      suggestions.forEach((suggestion) => {
-        const docRef = suggestionsRef.doc(); // Auto-generate ID
-        batch.set(docRef, {
-          ...suggestion,
-          createdAt: new Date(),
-          isNew: true, // For the UI to highlight
-        });
-      });
-      await batch.commit();
-
-      console.log(`PROACTIVE AGENT: Successfully generated ${suggestions.length} suggestions for teacher ${teacherId}`);
-    } catch (error) {
-      console.error(`PROACTIVE AGENT: CRITICAL ERROR for teacher ${teacherId}:`, error);
+    if (activitySnapshot.empty) {
+      console.log(`PROACTIVE AGENT: No activity for ${teacherId}. Nothing to do.`);
+      return {success: true, message: "No activity to process."};
     }
+
+    const recentActivities = activitySnapshot.docs.map((doc) => {
+      const data = doc.data();
+      return `- Created a '${data.activityType}' on the topic of '${data.topic}'.`;
+    }).join("\n");
+
+    // Step 2: Craft the prompt. (No change here)
+    const prompt = `
+      You are "Sahayak," an AI teaching companion. Your goal is to be proactive.
+      Based on the teacher's recent activity, generate 2-3 new, creative, and 
+      actionable teaching ideas.
+      **Teacher's Recent Activity (Memory):**
+      ${recentActivities}
+      **CRITICAL INSTRUCTIONS:**
+      - Generate a JSON array of 2-3 suggestion objects.
+      - Your entire response MUST be ONLY the valid JSON array. Do not use markdown.
+      - Each object in the array MUST follow this exact schema:
+      {
+        "suggestionText": "A user-facing string...",
+        "actionType": "Must be one of: 'generateStory', 'explainConcept'.",
+        "actionPayload": { "topic": "A new, related idea." }
+      }
+    `;
+
+    console.log("PROACTIVE AGENT: [2/5] Sending prompt to model...");
+    const result = await suggestionModel.generateContent({
+      contents: [{role: "user", parts: [{text: prompt}]}],
+    });
+
+    // 5. --- VERTEX AI RESPONSE PARSING ---
+    if (!result.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.error("PROACTIVE AGENT: Unexpected response structure from Vertex AI", result.response);
+      throw new Error("Failed to parse a valid response from the AI model.");
+    }
+    const responseText = result.response.candidates[0].content.parts[0].text;
+    console.log("PROACTIVE AGENT: [3/5] Raw model response received:", responseText);
+
+    // Step 4: Parse the JSON with robust error handling.
+    let suggestions = [];
+    try {
+      console.log("PROACTIVE AGENT: [4/5] Attempting to parse JSON...");
+      const cleanJsonString = responseText.replace(/^```json\s*|```\s*$/g, "").trim();
+      suggestions = JSON.parse(cleanJsonString);
+    } catch (parseError) {
+      // If the model gave us bad JSON, we will log the error and stop,
+      // but the entire function will not crash.
+      console.error(
+          "PROACTIVE AGENT: FATAL PARSE ERROR! Model did not return valid JSON.",
+          "Error:", parseError,
+          "Raw Text:", responseText,
+      );
+      // We return success=false to prevent further execution.
+      return {success: false, error: "Failed to parse suggestions from AI."};
+    }
+
+    // Step 5: Save the successfully parsed suggestions to Firestore.
+    const suggestionsRef = db.collection("users").doc(teacherId)
+        .collection("proactiveSuggestions");
+
+    const oldSuggestions = await suggestionsRef.get();
+    const deleteBatch = db.batch();
+    oldSuggestions.docs.forEach((doc) => deleteBatch.delete(doc.ref));
+    await deleteBatch.commit();
+
+    const addBatch = db.batch();
+    suggestions.forEach((suggestion) => {
+      const docRef = suggestionsRef.doc();
+      addBatch.set(docRef, {
+        ...suggestion,
+        createdAt: new Date(),
+        isNew: true,
+      });
+    });
+    await addBatch.commit();
+
+    console.log(`PROACTIVE AGENT: [5/5] Successfully saved ${suggestions.length} new suggestions.`);
+    return {success: true, count: suggestions.length};
+  } catch (error) {
+    console.error(`PROACTIVE AGENT: CRITICAL ERROR for teacher ${teacherId}:`, error);
+    return {success: false, error: error.message};
   }
-  return null;
+});
+
+exports.transcribeAudio = onCall({
+  region: DEPLOY_REGION, // Uses your global region, e.g., "us-east1"
+  timeoutSeconds: 60,
+  memory: "512MiB",
+}, async (request) => {
+  // 1. --- VALIDATION ---
+  if (!request.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Auth is required.");
+  }
+  const {audioBase64} = request.data;
+  if (!audioBase64) {
+    throw new functions.https.HttpsError("invalid-argument", "Audio data is required.");
+  }
+
+  try {
+    // 2. --- INITIALIZE VERTEX AI SPEECH CLIENT ---
+    // This client uses the function's own service account for authentication.
+    const speechClient = new speech.SpeechClient();
+
+    // 3. --- CONFIGURE THE TRANSCRIPTION REQUEST ---
+    const audio = {
+      content: audioBase64, // The audio data is already Base64 encoded by the client
+    };
+    const config = {
+      // NOTE: Browser MediaRecorder often uses WEBM_OPUS. If transcription fails,
+      // you may need to adjust the encoding based on the exact format.
+      encoding: "WEBM_OPUS",
+      // This sample rate is common for web audio.
+      sampleRateHertz: 48000,
+      languageCode: "en-US", // BCP-47 language code (e.g., "en-US", "hi-IN")
+      // Use a model optimized for short commands, like search queries.
+      model: "short",
+    };
+    const speechRequest = {
+      audio: audio,
+      config: config,
+    };
+
+    console.log("transcribeAudio: Sending audio to Vertex AI Speech-to-Text...");
+
+    // 4. --- PERFORM TRANSCRIPTION AND PARSE RESPONSE ---
+    const [response] = await speechClient.recognize(speechRequest);
+    const transcription = response.results
+        .map((result) => result.alternatives[0].transcript)
+        .join("\n");
+
+    console.log(`transcribeAudio: Transcription successful: "${transcription}"`);
+
+    // 5. --- RETURN THE TEXT TO THE FRONTEND ---
+    return {transcript: transcription};
+  } catch (error) {
+    console.error("transcribeAudio CRITICAL ERROR:", error);
+    throw new functions.https.HttpsError(
+        "internal",
+        "Failed to transcribe audio.",
+        error.message,
+    );
+  }
 });
