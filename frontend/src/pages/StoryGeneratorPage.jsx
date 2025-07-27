@@ -6,22 +6,39 @@ import { functions, db } from '../firebase';
 import { httpsCallable } from 'firebase/functions';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { motion } from 'framer-motion';
-import { ChevronDown, Loader } from 'lucide-react';
+import { ChevronDown, Loader, Download } from 'lucide-react';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { downloadPdf } from '../utils/pdfGenerator'; // Our PDF utility
 
 const generateTextFn = httpsCallable(functions, 'generateTextContent');
 
-// --- COMPONENT 1: Renders a single story from history ---
+// --- COMPONENT 1: Renders a single story from history (with a visible Download PDF button) ---
 const StoryHistoryCard = ({ doc }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleString() : 'N/A';
+  const formatDate = (ts) => (ts ? new Date(ts.seconds * 1000).toLocaleString() : 'N/A');
+
+  const contentId = `story-content-${doc.id}`;
+
+  const handleDownload = (e) => {
+    e.stopPropagation(); // Prevents the card from opening/closing when this button is clicked
+
+    if (!isOpen) {
+      setIsOpen(true);
+    }
+
+    setTimeout(() => {
+      downloadPdf(contentId, `Story - ${doc.userPrompt}`);
+    }, 100);
+  };
 
   return (
     <div className="bg-surface border border-border-subtle rounded-xl shadow-lg mb-6 overflow-hidden">
-      <button
+      <div
+        // We make the outer div clickable to toggle, but the button inside will have its own click handler
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex justify-between items-center p-5 text-left transition-colors hover:bg-surface/80"
+        className="w-full flex justify-between items-center p-5 text-left transition-colors hover:bg-surface/80 cursor-pointer"
       >
+        {/* Left side of header: Title and Date */}
         <div>
           <h3 className="font-bold text-lg text-text-main">
             Story based on: "{doc.userPrompt}"
@@ -30,10 +47,29 @@ const StoryHistoryCard = ({ doc }) => {
             Generated on: {formatDate(doc.createdAt)}
           </p>
         </div>
-        <ChevronDown className={`w-6 h-6 text-text-secondary transform transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+
+        {/* Right side of header: Action Buttons */}
+        <div className="flex items-center gap-4 flex-shrink-0 ml-4">
+          {/* --- THIS IS THE NEW, VISIBLE BUTTON --- */}
+          <button
+            onClick={handleDownload}
+            className="flex items-center gap-2 text-sm font-semibold bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            <Download size={16} />
+            <span>Download PDF</span>
+          </button>
+          <ChevronDown className={`w-6 h-6 text-text-secondary transform transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </div>
+      </div>
+
+      {/* The content area, which expands when the card is open */}
       {isOpen && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 md:p-6 border-t border-border-subtle">
+        <motion.div
+          id={contentId}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="p-5 md:p-6 bg-surface border-t border-border-subtle"
+        >
           <div className="whitespace-pre-wrap font-poppins text-text-secondary leading-relaxed">
             {doc.generatedContent}
           </div>
@@ -43,7 +79,7 @@ const StoryHistoryCard = ({ doc }) => {
   );
 };
 
-// --- COMPONENT 2: The main page ---
+// --- COMPONENT 2: The main page component (functionality is unchanged) ---
 const StoryGeneratorPage = () => {
   const { user } = useOutletContext();
   const [prompt, setPrompt] = useState('');
@@ -90,7 +126,6 @@ const StoryGeneratorPage = () => {
       <div className="bg-surface p-6 rounded-xl border border-border-subtle shadow-2xl shadow-black/20">
         <h2 className="text-2xl font-bold text-text-main">Hyperlocal Story Generator</h2>
         <p className="text-text-secondary mt-2 mb-6">Generate stories in local dialects and contexts (e.g., Hindi, Marathi).</p>
-        {/* THIS IS THE CORRECTED TEXTAREA */}
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}

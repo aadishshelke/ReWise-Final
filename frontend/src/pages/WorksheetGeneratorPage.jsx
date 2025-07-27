@@ -6,10 +6,11 @@ import { db, storage } from '../firebase';
 import { ref, uploadBytesResumable } from 'firebase/storage';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { motion } from 'framer-motion';
-import { ChevronDown, FileUp, Loader } from 'lucide-react';
-import LoadingSpinner from '../components/LoadingSpinner'; // Assuming this is your preferred spinner
+import { ChevronDown, FileUp, Loader, Download } from 'lucide-react'; // Import Download icon
+import LoadingSpinner from '../components/LoadingSpinner';
+import { downloadPdf } from '../utils/pdfGenerator'; // Import our PDF utility
 
-// --- COMPONENT 1: Renders a single question (WITH INLINE STYLE FIX) ---
+// --- COMPONENT 1: Renders a single question (functionality is unchanged) ---
 const Question = ({ question, index }) => {
   return (
     <div className="py-4 border-b border-border-subtle last:border-b-0 text-left">
@@ -36,7 +37,7 @@ const Question = ({ question, index }) => {
         <div className="mt-3">
           <input
             type="text"
-            style={{ backgroundColor: '#1F2937', color: '#E5E7EB' }} // <-- INLINE STYLE FIX
+            style={{ backgroundColor: '#1F2937', color: '#E5E7EB' }}
             className="w-full p-2 border border-gray-700 rounded-md focus:ring-2 focus:ring-primary focus:outline-none"
           />
         </div>
@@ -51,7 +52,7 @@ const Question = ({ question, index }) => {
         <div className="mt-3">
           <textarea
             rows="3"
-            style={{ backgroundColor: '#1F2937', color: '#E5E7EB' }} // <-- INLINE STYLE FIX
+            style={{ backgroundColor: '#1F2937', color: '#E5E7EB' }}
             className="w-full p-2 border border-gray-700 rounded-md focus:ring-2 focus:ring-primary focus:outline-none"
           ></textarea>
         </div>
@@ -60,20 +61,50 @@ const Question = ({ question, index }) => {
   );
 };
 
-// --- COMPONENT 2: Renders a collapsible accordion for one grade level ---
-const GradeLevelWorksheet = ({ worksheet }) => {
+// --- COMPONENT 2: Renders a collapsible accordion for one grade level (with Download button) ---
+const GradeLevelWorksheet = ({ worksheet, docId }) => {
   const [isOpen, setIsOpen] = useState(false);
+  
+  // Create a unique ID for the content that will be downloaded
+  const contentId = `worksheet-${docId}-${worksheet.gradeLevel.replace(/\s+/g, '-')}`;
+
+  const handleDownload = (e) => {
+    e.stopPropagation(); // Prevent the accordion from toggling
+
+    if (!isOpen) {
+      setIsOpen(true);
+    }
+
+    setTimeout(() => {
+      downloadPdf(contentId, `${worksheet.title}`);
+    }, 100);
+  };
+
   return (
     <div className="border border-border-subtle rounded-lg bg-surface-sunken overflow-hidden">
-      <button
+      <div
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex justify-between items-center p-4 hover:bg-surface transition-colors"
+        className="w-full flex justify-between items-center p-4 hover:bg-surface transition-colors cursor-pointer"
       >
         <span className="font-semibold text-primary">{worksheet.title} ({worksheet.gradeLevel})</span>
-        <ChevronDown className={`w-5 h-5 text-text-secondary transform transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+        <div className="flex items-center gap-4">
+            <button
+                onClick={handleDownload}
+                className="flex items-center gap-2 text-xs font-semibold bg-primary text-white px-3 py-1.5 rounded-md hover:bg-primary/90 transition-colors"
+            >
+                <Download size={14} />
+                <span>PDF</span>
+            </button>
+            <ChevronDown className={`w-5 h-5 text-text-secondary transform transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </div>
+      </div>
       {isOpen && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 md:p-6 border-t border-border-subtle">
+        <motion.div
+            id={contentId}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="p-4 md:p-6 bg-surface border-t border-border-subtle"
+        >
           <div className="flex justify-between items-center mb-4">
             <h4 className="text-lg font-bold text-text-main">{worksheet.title}</h4>
             <span className="font-bold text-text-secondary">Total Marks: {worksheet.totalMarks}</span>
@@ -87,7 +118,7 @@ const GradeLevelWorksheet = ({ worksheet }) => {
   );
 };
 
-// --- COMPONENT 3: The main card for a single generated document ---
+// --- COMPONENT 3: The main card for a single generated document (Updated to pass doc.id) ---
 const WorksheetHistoryCard = ({ doc }) => {
   const [isOpen, setIsOpen] = useState(false);
   const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleString() : 'N/A';
@@ -109,7 +140,8 @@ const WorksheetHistoryCard = ({ doc }) => {
       {isOpen && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 border-t border-border-subtle space-y-4">
           {doc.generatedContent.worksheets.map((ws) => (
-            <GradeLevelWorksheet key={ws.gradeLevel} worksheet={ws} />
+            // Pass the doc.id down to ensure unique IDs for the PDF generator
+            <GradeLevelWorksheet key={ws.gradeLevel} worksheet={ws} docId={doc.id} />
           ))}
         </motion.div>
       )}
@@ -117,7 +149,7 @@ const WorksheetHistoryCard = ({ doc }) => {
   );
 };
 
-// --- COMPONENT 4: A styled file input ---
+// --- COMPONENT 4: A styled file input (functionality is unchanged) ---
 const FileInput = ({ file, onFileChange }) => {
   return (
     <label className="w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-border-subtle rounded-lg cursor-pointer hover:bg-surface-sunken transition-colors">
@@ -134,7 +166,7 @@ const FileInput = ({ file, onFileChange }) => {
 };
 
 
-// --- COMPONENT 5: The main page ---
+// --- COMPONENT 5: The main page (functionality is unchanged) ---
 const WorksheetGeneratorPage = () => {
   const { user } = useOutletContext();
   const [file, setFile] = useState(null);
@@ -183,7 +215,7 @@ const WorksheetGeneratorPage = () => {
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder="Main topic? (e.g., Photosynthesis, The Solar System)"
-            style={{ backgroundColor: '#1F2937', color: '#E5E7EB' }} // <-- INLINE STYLE FIX
+            style={{ backgroundColor: '#1F2937', color: '#E5E7EB' }}
             className="w-full p-3 border border-gray-700 rounded-lg placeholder:text-gray-500 focus:ring-2 focus:ring-primary focus:outline-none"
           />
           <FileInput file={file} onFileChange={(e) => setFile(e.target.files[0])} />

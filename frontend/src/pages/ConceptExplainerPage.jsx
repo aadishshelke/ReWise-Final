@@ -6,32 +6,66 @@ import { functions, db } from '../firebase';
 import { httpsCallable } from 'firebase/functions';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { motion } from 'framer-motion';
-import { ChevronDown, Loader } from 'lucide-react';
+import { ChevronDown, Loader, Download } from 'lucide-react'; // Import Download icon
 import LoadingSpinner from '../components/LoadingSpinner';
+import { downloadPdf } from '../utils/pdfGenerator'; // Import our PDF utility
 
 const generateTextFn = httpsCallable(functions, 'generateTextContent');
 
-// --- COMPONENT 1: Renders a single concept from history ---
+// --- COMPONENT 1: Renders a single concept from history (with improved Download button) ---
 const ConceptHistoryCard = ({ doc }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleString() : 'N/A';
+  const formatDate = (ts) => (ts ? new Date(ts.seconds * 1000).toLocaleString() : 'N/A');
+
+  const contentId = `concept-content-${doc.id}`;
+
+  const handleDownload = (e) => {
+    e.stopPropagation(); // Prevents the card from toggling open/close
+
+    if (!isOpen) {
+      setIsOpen(true);
+    }
+
+    setTimeout(() => {
+      downloadPdf(contentId, `Concept - ${doc.userPrompt}`);
+    }, 100);
+  };
 
   return (
     <div className="bg-surface border border-border-subtle rounded-xl shadow-lg mb-6 overflow-hidden">
-      <button
+      <div
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex justify-between items-center p-5 text-left transition-colors hover:bg-surface/80"
+        className="w-full flex justify-between items-center p-5 text-left transition-colors hover:bg-surface/80 cursor-pointer"
       >
+        {/* Left side of header */}
         <div>
           <p className="text-xs text-text-secondary">Question Asked</p>
           <h3 className="font-bold text-lg text-text-main mt-1">
             "{doc.userPrompt}"
           </h3>
         </div>
-        <ChevronDown className={`w-6 h-6 text-text-secondary transform transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+
+        {/* Right side of header */}
+        <div className="flex items-center gap-4 flex-shrink-0 ml-4">
+          <button
+            onClick={handleDownload}
+            className="flex items-center gap-2 text-sm font-semibold bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            <Download size={16} />
+            <span>Download PDF</span>
+          </button>
+          <ChevronDown className={`w-6 h-6 text-text-secondary transform transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </div>
+      </div>
+
+      {/* The expandable content area */}
       {isOpen && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 md:p-6 border-t border-border-subtle">
+        <motion.div
+          id={contentId}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="p-5 md:p-6 bg-surface border-t border-border-subtle"
+        >
           <p className="text-xs text-text-secondary mb-4">Generated on: {formatDate(doc.createdAt)}</p>
           <h4 className="font-semibold text-primary mb-2">Simple Explanation:</h4>
           <div className="whitespace-pre-wrap font-poppins text-text-secondary leading-relaxed">
@@ -43,7 +77,7 @@ const ConceptHistoryCard = ({ doc }) => {
   );
 };
 
-// --- COMPONENT 2: The main page ---
+// --- COMPONENT 2: The main page component (functionality is unchanged) ---
 const ConceptExplainerPage = () => {
   const { user } = useOutletContext();
   const [prompt, setPrompt] = useState('');
@@ -90,7 +124,6 @@ const ConceptExplainerPage = () => {
       <div className="bg-surface p-6 rounded-xl border border-border-subtle shadow-2xl shadow-black/20">
         <h2 className="text-2xl font-bold text-text-main">Instant Knowledge Base</h2>
         <p className="text-text-secondary mt-2 mb-6">Get simple explanations for complex student questions.</p>
-        {/* THIS IS THE CORRECTED TEXTAREA */}
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
