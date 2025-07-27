@@ -68,22 +68,22 @@ export default function SyllabusSetup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-softbg dark:bg-gray-950 py-8">
+    <div className="min-h-screen flex items-center justify-center bg-background py-8">
       <motion.div
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7 }}
         className="w-full max-w-lg"
       >
-        <div className="rounded-2xl shadow-soft p-6 bg-white dark:bg-gray-900">
+        <div className="rounded-2xl shadow-2xl shadow-black/30 p-8 bg-surface border border-border-subtle">
           <div className="mb-4 text-primary font-semibold text-sm">Step 2 of 3 — Syllabus Setup</div>
           {/* Info Banner */}
-          <div className="mb-4 bg-blue-50 text-blue-700 rounded p-2 text-xs text-center">
+          <div className="mb-4 bg-primary/10 text-primary rounded p-2 text-xs text-center">
             You can edit your syllabus later from Settings.
           </div>
           {/* Upload Zone */}
           <div
-            className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center mb-4 transition cursor-pointer ${dragActive ? "border-accent bg-orange-50" : "border-gray-300 bg-gray-50"}`}
+            className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center mb-4 transition cursor-pointer ${dragActive ? "border-accent bg-accent/10" : "border-border-subtle bg-surface-sunken"}`}
             onClick={() => fileInputRef.current.click()}
             onDrop={handleDrop}
             onDragOver={handleDrag}
@@ -97,11 +97,11 @@ export default function SyllabusSetup() {
               ref={fileInputRef}
               onChange={handleFileChange}
             />
-            <div className="text-lg font-semibold mb-1">📝 Upload Your Syllabus</div>
-            <div className="text-xs text-gray-500 mb-2">Supports PDF, DOCX, Images</div>
+            <div className="text-lg font-semibold mb-1 text-text-main">📝 Upload Your Syllabus</div>
+            <div className="text-xs text-text-secondary mb-2">Supports PDF, DOCX, Images</div>
             {file ? (
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-sm font-medium">{file.name}</span>
+                <span className="text-sm font-medium text-text-main">{file.name}</span>
                 <button
                   type="button"
                   className="text-red-500 hover:text-red-700 text-lg"
@@ -120,7 +120,7 @@ export default function SyllabusSetup() {
               <button
                 key={subj.name}
                 className={`px-3 py-1 rounded-full font-medium text-sm transition border
-                  ${selectedSubject === subj.name ? "bg-primary text-white border-primary" : "bg-gray-100 border-gray-300 text-gray-700"}
+                  ${selectedSubject === subj.name ? "bg-primary text-white border-primary" : "bg-surface-sunken border-border-subtle text-text-secondary"}
                 `}
                 onClick={() => setSelectedSubject(subj.name)}
                 type="button"
@@ -138,7 +138,7 @@ export default function SyllabusSetup() {
                 whileTap={{ scale: 0.95 }}
                 animate={selectedTopics.includes(topic) ? { scale: [1, 1.1, 1] } : {}}
                 className={`px-3 py-1 rounded-full border text-sm font-medium flex items-center gap-1 transition
-                  ${selectedTopics.includes(topic) ? "bg-accent text-white border-accent" : "bg-gray-100 border-gray-300 text-gray-700"}
+                  ${selectedTopics.includes(topic) ? "bg-accent text-white border-accent" : "bg-surface-sunken border-border-subtle text-text-secondary"}
                 `}
                 onClick={() => handleTopicToggle(topic)}
               >
@@ -151,7 +151,7 @@ export default function SyllabusSetup() {
           {selectedTopics.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {selectedTopics.map((topic) => (
-                <span key={topic} className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1">
+                <span key={topic} className="bg-green-500/20 text-green-400 px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1">
                   ✓ {topic}
                 </span>
               ))}
@@ -160,7 +160,7 @@ export default function SyllabusSetup() {
           {/* Save Button */}
           <div className="pt-2">
             <button
-              className="w-full bg-accent text-white font-semibold py-2 rounded-lg text-lg hover:bg-accent/90 transition"
+              className="w-full bg-accent text-white font-semibold py-2 rounded-lg text-lg hover:bg-accent/90 transition disabled:bg-gray-600 disabled:cursor-not-allowed"
               onClick={handleSave}
               disabled={saving || (!file && selectedTopics.length === 0)}
             >
@@ -168,12 +168,12 @@ export default function SyllabusSetup() {
             </button>
             <AnimatePresence>
               {saving && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-blue-500 text-center mt-2">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-primary text-center mt-2">
                   Saving your syllabus...
                 </motion.div>
               )}
               {saved && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-green-600 text-center mt-2">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-green-400 text-center mt-2">
                   Syllabus saved! Redirecting...
                 </motion.div>
               )}

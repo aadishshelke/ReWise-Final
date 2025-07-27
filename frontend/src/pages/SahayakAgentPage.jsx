@@ -208,10 +208,10 @@ const ImageUploader = ({ topic, user, onUploadComplete }) => {
                             {isTranscribing ? (
                                 <motion.div key="loader" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}><Loader size={20} className="animate-spin" /></motion.div>
                             ) : (
-                                <motion.div key="mic" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}
+                                <motion.div key="mic" initial={{ opacity: 0, scale: 0.5 }} exit={{ opacity: 0, scale: 0.5 }}
                                     // Flashing animation while recording
                                     transition={isRecording ? { duration: 0.8, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" } : {}}
-                                    animate={isRecording ? { opacity: [1, 0.5, 1] } : { opacity: 1 }}
+                                    animate={isRecording ? { opacity: [1, 0.5, 1], scale: 1 } : { opacity: 1, scale: 1 }}
                                 >
                                     <Mic size={20} />
                                 </motion.div>

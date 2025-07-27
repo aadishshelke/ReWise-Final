@@ -10,8 +10,8 @@ const ProtectedRoute = ({children}) => {
     }
 
     if (!user) {
-        // If not loading and no user, redirect to the Welcome page (our new login page)
-        return <Navigate to="/" />;
+        // If not loading and no user, redirect to the login page
+        return <Navigate to="/login" />;
     }
 
     // If a user exists, render the child component (e.g., the Dashboard)

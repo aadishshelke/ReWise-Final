@@ -24,6 +24,7 @@ export default {
         'soft-bg-light': '#F7F8FC',
         'background': '#0A090F',
         'surface': '#191720',
+        'surface-sunken': '#0F0E17',
         'primary': '#6D28D9',
         'border-subtle': 'rgba(255, 255, 255, 0.1)',
         'text-main': '#F9FAFB',

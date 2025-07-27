@@ -7,6 +7,7 @@ import { DashboardLayout } from "./layouts/DashboardLayout";
 
 // Import your static components
 import Welcome from "./pages/Welcome";
+import LoginPage from "./pages/LoginPage";
 import TeacherProfileSetup from "./pages/TeacherProfileSetup";
 import SyllabusSetup from "./pages/SyllabusSetup";
 import Dashboard from "./pages/Dashboard";
@@ -55,12 +56,6 @@ function ThemeProvider({ children }) {
           >
             {dark ? "Light Mode" : "Dark Mode"}
           </button>
-          <button
-            className="px-3 py-1 rounded bg-accent text-white font-semibold hover:bg-accent/90 transition"
-            onClick={() => setFestival((f) => !f)}
-          >
-            {festival ? "Normal Mode" : "Festival Mode"}
-          </button>
         </div>
         {children}
       </div>
@@ -93,6 +88,7 @@ function App() {
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<Welcome />} />
+          <Route path="/login" element={<LoginPage />} />
 
           {/* Protected Onboarding Routes (without the main sidebar) */}
           <Route path="/onboarding/profile" element={<ProtectedRoute><TeacherProfileSetup /></ProtectedRoute>} />
